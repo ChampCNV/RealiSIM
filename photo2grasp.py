@@ -294,7 +294,8 @@ def main():
         extra = (["--steps", args.steps] if args.steps else [])
         if args.colab:
             call("colab/build_zip.py", "--object", args.name, "--area", args.area, *init, *extra)
-            print("next: open colab/colab_cell.py's steps (scratchpad notebook, T4), upload colab/so100_tag_train.zip")
+            print(f"next: Colab (T4): open colab/{args.name}_train.ipynb or paste colab/colab_cell.py, upload "
+                  f"colab/{args.name}_train.zip")
         else:
             call("sim2real/train_tag.py", "--object", args.name, "--area", args.area, *init, *extra,
                  cwd=ROOT / "sim2real")

@@ -2,8 +2,8 @@
 # On the laptop first: python photo2grasp.py train <object> --colab   (or: python colab/build_zip.py --object ...)
 # Open a scratchpad notebook (not saved to Drive): https://colab.research.google.com/notebooks/empty.ipynb
 # Runtime > Change runtime type > T4 GPU. Paste this whole cell and run it.
-#   New run:     pick so100_tag_train.zip (object, area and starting model are inside it)
-#   Continue:    pick so100_tag_train.zip AND your latest tag_backup_*.zip (select both files together)
+#   New run:     pick <object>_train.zip (object, area and starting model are inside it)
+#   Continue:    pick <object>_train.zip AND your latest tag_backup_*.zip (select both files together)
 # Every 250k steps a tag_backup_<step>.zip downloads to your computer: if Colab disconnects, continue from it.
 import os, re, shutil, subprocess, zipfile
 from google.colab import files
@@ -11,9 +11,9 @@ from google.colab import files
 STEPS = 1_000_000       # total steps unless the zip says otherwise (~3 h on a T4)
 BACKUP_EVERY = 250_000  # download a backup zip this often
 
-print("Pick so100_tag_train.zip (and a tag_backup_*.zip to continue a run)...")
+print("Pick <object>_train.zip (and a tag_backup_*.zip to continue a run)...")
 uploaded = list(files.upload())
-code = [f for f in uploaded if "so100_tag_train" in f][0]
+code = [f for f in uploaded if f.endswith(".zip") and "tag_backup" not in f][0]  # the training package
 zipfile.ZipFile(code).extractall("/content/so100_tag")
 subprocess.run("pip -q install mujoco==3.16.0", shell=True, check=True)
 
@@ -45,5 +45,6 @@ for line in proc.stdout:
         files.download(name + ".zip")
 proc.wait()
 
-shutil.make_archive("/content/tag_run", "zip", run_dir)
-files.download("/content/tag_run.zip")  # put it in robot_sim/: python photo2grasp.py import tag_run.zip
+obj = train_args[train_args.index("--object") + 1] if "--object" in train_args else "lego_tree"
+shutil.make_archive(f"/content/{obj}_run", "zip", run_dir)
+files.download(f"/content/{obj}_run.zip")  # put it in robot_sim/: python photo2grasp.py import <object>_run.zip

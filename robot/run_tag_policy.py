@@ -12,7 +12,10 @@ Between attempts: ENTER starts, "c" re-calibrates the environment camera (touch 
 "q" quits. While running it compares the two cameras when both see the object and warns if they disagree
 (the camera was probably moved: press "c" before the next attempt).
 Safety: slow eased moves, --speed scales every action, per-step limit, the gripper tip is kept above the table
-and within reach, Ctrl+C folds the arm and turns torque off. Every attempt is logged to runs/real_logs/.
+and within reach, the wrist camera is kept away from the arm (every eased move follows a route checked in the
+model: from zero first a little forward and up; policy targets that bring it too close are held, as in
+training), Ctrl+C folds the arm to SAFE_REST (camera turned away) and turns torque off. Every attempt is logged
+to runs/real_logs/.
 """
 import argparse
 import collections
@@ -29,14 +32,14 @@ import torch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "sim2real"))
-from tag_env import (TAG, TagLiftEnv, back_to_front, intrinsics, object_tags, ruler, tag_state,  # noqa: E402
-                     vfov)
+from tag_env import (MIN_CAMERA_CLEARANCE, OLD_POLICY_CLEARANCE, SAFE_REST, TAG, TagLiftEnv,  # noqa: E402
+                     back_to_front, intrinsics, object_tags, pose_clearance, ruler, safe_route, tag_state, vfov)
 from train_tag import Actor  # noqa: E402
 
 from arm import SOArm  # noqa: E402
 from calibrate_env_camera import CONFIG, touch_calibrate  # noqa: E402
 from camera import Camera, list_cameras  # noqa: E402
-from sim_map import SimMap, sim_pose  # noqa: E402
+from sim_map import SimMap  # noqa: E402
 from sim_mirror import Mirror  # noqa: E402
 
 DRIFT_WARN = 0.025  # m: wrist and environment camera disagree by more than this -> camera probably moved
@@ -51,6 +54,7 @@ class TagTracker:
         self.env = TagLiftEnv(ck.get("object", "lego_tree"), domain_randomization=False, start=ck["start"],
                               area=ck.get("area"))  # model for kinematics, same object + placement area
         self.env.calib_pos, self.env.calib_rot = np.zeros(3), np.eye(3)
+        self.env.min_camera_clearance = ck.get("min_camera_clearance", OLD_POLICY_CLEARANCE)  # as in its training
         self.K = intrinsics(wrist_fovy, ck["webcam"]["width"], ck["webcam"]["height"])
         self.depth = self.env.tag_depth  # this object's thickness between its tags (from its asset)
         self.front_id, self.back_id = object_tags(ck.get("object", "lego_tree"))  # IDs glued on this object
@@ -110,7 +114,8 @@ class TagTracker:
         return tag_state(q_sim, target, e.tag_est, visible, e.seen, e.age)
 
     def safe(self, target):
-        """Is the gripper tip for these joint targets above the table and within reach?"""
+        """Is the gripper tip for these joint targets above the table and within reach, and the wrist camera
+        clear of the arm?"""
         d = self.env.data
         keep = d.qpos.copy()
         d.qpos[self.env.qadr] = target
@@ -118,7 +123,7 @@ class TagTracker:
         tip = d.geom_xpos[self.tips].mean(0)
         d.qpos[:] = keep
         front, side, height = ruler(tip)
-        return height > MIN_TIP_HEIGHT and np.hypot(front, side) < MAX_REACH
+        return height > MIN_TIP_HEIGHT and np.hypot(front, side) < MAX_REACH and self.env.target_ok(target)
 
 
 def main():
@@ -170,7 +175,11 @@ def main():
 
     model = tracker.env.model
     lo, hi = model.actuator_ctrlrange[:, 0], model.actuator_ctrlrange[:, 1]
-    start, rest_pose = np.array(ck["start"]), sim_pose(model, "rest")
+    start, rest_pose = np.array(ck["start"]), np.array(SAFE_REST)
+    clearance = pose_clearance(model, tracker.env.check_data, start)
+    if clearance < MIN_CAMERA_CLEARANCE:
+        print(f"warning: this model's look pose leaves the wrist camera only {clearance * 100:.1f} cm from the arm "
+              f"(new trainings keep >= {MIN_CAMERA_CLEARANCE * 100:.0f} cm); watch the camera")
     max_step = np.radians(args.max_step_deg)
     a = tracker.env.area
     log_dir = ROOT / "runs" / "real_logs" / time.strftime("%Y%m%d_%H%M%S")
@@ -180,6 +189,35 @@ def main():
     arm.configure(**cfg.get("pid", {}))
     arm.torque(not args.dry_run)
     mover = Mirror(arm, mapping, args.move_speed)
+
+    def torque_on_here():
+        """Torque on without a jump: the servos' goal becomes where the arm is now (they move to their old goal
+        otherwise)."""
+        now = arm.read_degrees()
+        arm.write_degrees(now)
+        arm.torque(True)
+        mover.current = mapping.to_sim(now)
+
+    def move(goal, min_seconds=3.0, optional=False):
+        """Eased move to `goal` along a route that keeps the wrist camera clear of the arm (checked in the model).
+        No such route: optional moves are skipped (returns False), others ask for a hand move first."""
+        while True:
+            route = safe_route(model, tracker.env.check_data, mover.current, goal)
+            if route is not None:
+                break
+            if optional:
+                return False
+            print("no move from here keeps the wrist camera clear of the arm. The arm goes limp: hold it, move it "
+                  "by hand towards its zero pose (upright, camera away from the arm), keep holding it")
+            arm.torque(False)
+            input("then press ENTER (torque comes back on where the arm is): ")
+            torque_on_here()
+        if len(route) > 1:
+            print(f"   camera-safe route: {len(route)} moves")
+        for point in route:
+            mover.ease_to(point, min_seconds)
+        return True
+
     steps = int(ck["max_steps"] / min(1.0, args.speed))  # slower actions need more steps for the same motion
     drift = collections.deque(maxlen=30)
 
@@ -191,21 +229,20 @@ def main():
               "4 spots (SPACE at each)")
         if not args.dry_run:
             mover.current = mapping.to_sim(arm.read_degrees())
-            mover.ease_to(start)
+            move(start)
         arm.torque(False)
         if touch_calibrate(env_cam, arm, mapping, cfg, object_name):
             tracker.load_calibration(cfg)
             drift.clear()
         cv2.destroyAllWindows()
         if not args.dry_run:
-            arm.torque(True)
-            mover.current = mapping.to_sim(arm.read_degrees())
-            mover.ease_to(start)
+            torque_on_here()
+            move(start)
 
     try:
         if not args.dry_run:
             print("moving slowly to the look pose (webcam sees the placement area)...")
-            mover.ease_to(start)
+            move(start)
         for ep in range(args.episodes):
             while True:
                 key = input(f"\nAttempt {ep + 1}: place the {object_name} {a['front_min'] * 100:.0f}-"
@@ -226,7 +263,8 @@ def main():
                     goal = start.copy()
                     goal[0] += turn
                     goal[3] += tilt
-                    mover.ease_to(goal, min_seconds=1.5)
+                    if not move(goal, min_seconds=1.5, optional=True):
+                        continue  # this look direction would bring the camera too close to the arm
                 for _ in range(ck.get("scan_frames", 3)):
                     tracker.update(mapping.to_sim(arm.read_degrees()), read_wrist()[0], read_env())
                     if tracker.env.seen:
@@ -235,7 +273,7 @@ def main():
                     break
             print("tag found by the scan" if tracker.env.seen else "tag NOT found by the scan (policy starts blind)")
             if not args.dry_run and np.abs(mover.current - start).max() > 1e-3:
-                mover.ease_to(start, min_seconds=1.5)
+                move(start, min_seconds=1.5)
             target = mapping.to_sim(arm.read_degrees())
             log = csv.writer(open(log_dir / f"attempt_{ep + 1}.csv", "w", newline=""))
             log.writerow(["t"] + [f"q{i}" for i in range(6)] + [f"target{i}" for i in range(6)]
@@ -287,21 +325,22 @@ def main():
                     break
                 time.sleep(max(0, ck["control_dt"] - (time.time() - t0)))
             if holds:
-                print(f"safety: held {holds} moves that would have put the gripper into the table / out of reach")
+                print(f"safety: held {holds} moves that would have put the gripper into the table / out of reach / "
+                      f"the camera against the arm")
             if len(drift) >= 8 and np.median(drift) > DRIFT_WARN:
                 print(f"the two cameras disagree by {np.median(drift) * 100:.1f} cm: press 'c' to re-calibrate")
             if not args.dry_run:
                 print("attempt done, returning slowly to the look pose")
                 mover.current = target
-                mover.ease_to(start)
+                move(start)
         print(f"logs: {log_dir}")
     except KeyboardInterrupt:
         print("\nstopped by user")
     finally:
         if not args.dry_run:
-            print("folding the arm to rest, then torque off...")
+            print("folding the arm to rest (camera turned away from the arm), then torque off...")
             mover.current = mapping.to_sim(arm.read_degrees())
-            mover.ease_to(rest_pose)
+            move(rest_pose)
         arm.disconnect(torque_off=True)
         cam.close()
         if env_cam:

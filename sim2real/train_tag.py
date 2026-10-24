@@ -156,7 +156,7 @@ def main():
                 webcam=WEBCAM, env_camera=ENV_CAMERA, back_tag_id=BACK_TAG_ID, tag_depth=float(e0.tag_depth),
                 tag={k: v for k, v in TAG.items() if k != "dictionary"}, tag_family="DICT_APRILTAG_36h11",
                 state_dim=sd, action_dim=ad, action_scale=e0.action_scale.tolist(), control_dt=e0.control_dt,
-                max_steps=e0.max_steps)
+                max_steps=e0.max_steps, min_camera_clearance=e0.min_camera_clearance)
 
     def save(path):
         torch.save(dict(actor=actor.state_dict(), **meta), path)

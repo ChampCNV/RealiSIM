@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from lift_env import start_pose
-from tag_env import ENV_CAMERA, TAG, TagLiftEnv, ruler
+from tag_env import ENV_CAMERA, OLD_POLICY_CLEARANCE, TAG, TagLiftEnv, ruler
 
 
 def main():
@@ -36,6 +36,8 @@ def main():
     env = TagLiftEnv(ck.get("object", "lego_tree") if ck else args.object, seed=int(time.time()),
                      start=ck["start"] if ck else None, area=ck.get("area") if ck else None,
                      domain_randomization=not args.nominal)
+    if ck:
+        env.min_camera_clearance = ck.get("min_camera_clearance", OLD_POLICY_CLEARANCE)  # the rule it was trained with
     if args.zero:  # the real robot's resting start: middle of every joint's range; object centred, facing it
         env.start = list(start_pose(env.model, "zero"))
         env.spawn_half, env.face_yaw = np.zeros(2), 0.0

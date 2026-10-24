@@ -3,7 +3,8 @@
     python sim2real/find_look_pose.py [object] [--wide]
 
 Random search over arm poses; score = share of placement-grid positions where the tag is detected (nominal
-camera, no noise); the gripper must stay well above the table; ties go to poses closer to zero.
+camera, no noise); the gripper must stay well above the table and the wrist camera >= 6 cm from the arm (it got
+crushed against the lower arm before); ties go to poses closer to zero.
 look_pose(object, area) caches the result in assets/<object>/look_pose.json (per area), so training and the
 robot use the same pose.
 """
@@ -14,7 +15,7 @@ import mujoco
 import numpy as np
 
 from lift_env import ROOT, start_pose
-from tag_env import DEFAULT_AREA, LOOK_POSE, WIDE_AREA, TagLiftEnv
+from tag_env import DEFAULT_AREA, LOOK_POSE, MIN_CAMERA_CLEARANCE, WIDE_AREA, TagLiftEnv, camera_clearance
 
 
 def search(object_name, area, samples=12000, seed=0, verbose=True):
@@ -33,6 +34,9 @@ def search(object_name, area, samples=12000, seed=0, verbose=True):
         q[4] = rng.uniform(lo[4], hi[4])
         q[5] = 1.0  # gripper open
         d.qpos[env.qadr] = q
+        mujoco.mj_forward(m, d)
+        if camera_clearance(m, d) < MIN_CAMERA_CLEARANCE:  # would press the wrist camera against the arm
+            continue
         seen = 0
         for gx, gy in grid:
             xy = env.spawn_center + np.array([gx, gy]) * env.spawn_half

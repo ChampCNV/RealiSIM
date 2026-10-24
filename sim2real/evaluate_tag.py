@@ -13,7 +13,7 @@ from pathlib import Path
 
 import torch
 
-from tag_env import TagLiftEnv
+from tag_env import OLD_POLICY_CLEARANCE, TagLiftEnv
 from train_tag import Actor
 
 
@@ -23,6 +23,7 @@ def evaluate(checkpoint, episodes=100, env_only=False, seed=2024):
     actor.load_state_dict(ck["actor"])
     actor.eval()
     env = TagLiftEnv(ck.get("object", "lego_tree"), seed=seed, start=ck["start"], area=ck.get("area"))
+    env.min_camera_clearance = ck.get("min_camera_clearance", OLD_POLICY_CLEARANCE)  # the rule it was trained with
     if env_only:
         env.detect_wrist = lambda: None
     out = collections.Counter()

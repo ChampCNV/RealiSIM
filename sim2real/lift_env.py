@@ -280,10 +280,15 @@ class LiftEnv:
         m.actuator_gainprm[:, 0] = kp
         m.actuator_biasprm[:, 1] = -kp
 
+    def target_ok(self, target):
+        return True
+
     def step(self, action):
         m, d = self.model, self.data
         action = np.clip(action, -1, 1)
-        self.target = np.clip(self.target + action * self.action_scale, self.ctrl_low, self.ctrl_high)
+        target = np.clip(self.target + action * self.action_scale, self.ctrl_low, self.ctrl_high)
+        if self.target_ok(target):  # else keep the previous target (as the real robot's safety check does)
+            self.target = target
         d.ctrl[:] = self.target
         for _ in range(self.n_substeps):
             mujoco.mj_step(m, d)

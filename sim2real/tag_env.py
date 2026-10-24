@@ -43,6 +43,15 @@ LOOK_POSE = [0.0, -2.606, 2.07, 1.646, 1.802, 1.0]
 SCAN_TURNS = [(0.0, 0.0), (-0.45, 0.0), (0.45, 0.0), (0.0, 0.3), (0.0, -0.3), (-0.45, 0.3), (0.45, 0.3),
               (-0.45, -0.3), (0.45, -0.3)]
 SCAN_FRAMES = 3
+# The glued wrist webcam as a 2.5 cm ball (hidden, no physics) for distance checks: poses that bring it close to
+# the arm crushed the real camera, so ready poses keep it >= MIN_CAMERA_CLEARANCE from the arm.
+CAMERA_PROBE_RADIUS = 0.025
+MIN_CAMERA_CLEARANCE = 0.06
+MIN_MOVE_CLEARANCE = 0.03  # m: the real robot never moves (or lets the policy move) the camera closer than this
+# Folded pose for torque-off: the SO-100 "rest" keyframe with the wrist turned so the camera points away from the
+# lower arm (the keyframe itself leaves it 1.8 cm away; this one 7.9 cm).
+SAFE_REST = [0.0, -3.32, 3.11, 0.38, -1.57, -0.174]
+OLD_POLICY_CLEARANCE = 0.015  # m: policies trained before the camera rule reach 1.9 cm while grasping (sim)
 
 
 # Distances people measure with a ruler start at the base's rotation axis, which sits PAN_AXIS_FRONT in front
@@ -153,6 +162,8 @@ class TagLiftEnv(LiftEnv):
         self.tag_geom = m.geom("tag").id
         self.back_tag_geom = m.geom("tag_back").id
         self.fixed_jaw = m.body("Fixed_Jaw").id
+        self.min_camera_clearance = MIN_MOVE_CLEARANCE  # joint targets closer than this are held (sim and robot)
+        self.check_data = mujoco.MjData(m)  # scratch data for those checks
         self.state_dim = 20
         s = TAG["size"] / 2
         self.tag_obj_pts = np.array([[-s, s, 0], [s, s, 0], [s, -s, 0], [-s, -s, 0]], np.float32)
@@ -162,6 +173,9 @@ class TagLiftEnv(LiftEnv):
         self.env_fovy_nominal = m.cam_fovy[self.env_cam]
 
     def _extend(self, scene, obj, name):
+        scene.body("Fixed_Jaw").add_geom(name="webcam_probe", type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                                         size=[CAMERA_PROBE_RADIUS, 0, 0], pos=WEBCAM["pos"], contype=0,
+                                         conaffinity=0, group=4, density=0)
         e = ENV_CAMERA
         scene.worldbody.add_camera(name="envcam", pos=e["pos"], fovy=vfov(e["hfov"], e["width"], e["height"]),
                                    xyaxes=look_at(np.array(e["pos"]), np.array(e["target"])))
@@ -181,6 +195,9 @@ class TagLiftEnv(LiftEnv):
         self.tag_depth = front_face_y(obj, name) - front_face_y(obj, name, -1) + 0.0008  # front to back tag
 
     # ── Episode ────────────────────────────────────────────────────────────
+    def target_ok(self, target):
+        return pose_clearance(self.model, self.check_data, target) >= self.min_camera_clearance
+
     def reset(self):
         r = self.rng
         self.calib_pos = r.normal(0, self.calib_pos_noise, 3) if self.dr else np.zeros(3)
@@ -338,6 +355,56 @@ class TagLiftEnv(LiftEnv):
         grasped, _ = self._contacts()
         priv = np.concatenate([qpos, obj, tcp - obj, [float(grasped)]]).astype(np.float32)
         return dict(state=state, priv=priv)
+
+
+def camera_clearance(model, data):
+    """Distance (m) from the wrist webcam (probe ball) to the arm's base, shoulder, upper and lower arm."""
+    probe = model.geom("webcam_probe").id
+    bodies = {model.body(n).id for n in ("Base", "Rotation_Pitch", "Upper_Arm", "Lower_Arm")}
+    fromto = np.zeros(6)
+    return min(mujoco.mj_geomDistance(model, data, probe, g, 0.5, fromto) for g in range(model.ngeom)
+               if model.geom_bodyid[g] in bodies and model.geom_contype[g])
+
+
+def pose_clearance(model, data, q):
+    """camera_clearance for joint angles q (rad); data's own pose is left unchanged."""
+    keep = data.qpos.copy()
+    data.qpos[:6] = q
+    mujoco.mj_kinematics(model, data)
+    c = camera_clearance(model, data)
+    data.qpos[:] = keep
+    mujoco.mj_kinematics(model, data)
+    return c
+
+
+def path_clearance(model, data, a, b, samples=40):
+    """Smallest camera clearance along a straight joint-space move from a to b (what ease_to does)."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    return min(pose_clearance(model, data, a + (b - a) * s) for s in np.linspace(0, 1, samples))
+
+
+def safe_route(model, data, current, goal, minimum=MIN_MOVE_CLEARANCE):
+    """Waypoints from current to goal that keep the wrist camera away from the arm, or None.
+
+    Tried in order: straight; via "a little forward and up" (a quarter of the way from zero to the goal, shoulder
+    forward, elbow up), which is how the arm unfolds from zero without folding onto the camera; via zero first;
+    each of these after first turning the wrist as in SAFE_REST (camera away from the lower arm).
+    If the arm is already closer than `minimum` (e.g. folded by hand), it must not get any closer than it is.
+    """
+    zero = (model.jnt_range[:6, 0] + model.jnt_range[:6, 1]) / 2
+    current, goal = np.asarray(current, float), np.asarray(goal, float)
+    minimum = min(minimum, pose_clearance(model, data, current) - 0.002)
+    up = zero + 0.25 * (goal - zero)
+    up[1] += 0.25
+    up[2] -= 0.25
+    wrist_away = current.copy()
+    wrist_away[3:5] = SAFE_REST[3:5]
+    routes = [[goal], [up, goal], [zero, up, goal], [zero, goal]]
+    for route in routes + [[wrist_away] + r for r in routes]:
+        points = [current] + route
+        if all(path_clearance(model, data, p, n) >= minimum for p, n in zip(points[:-1], points[1:])):
+            return route
+    return None
 
 
 def back_to_front(pos, normal, depth):
