@@ -163,7 +163,11 @@ def get_scene(job_id: str):
             if (work / name).exists():
                 z.write(work / name, base / name)
         for name in [o["name"] for o in json.loads((work / "layout.json").read_text())["objects"]]:
-            for f in (ROOT / "assets" / name).iterdir():
-                z.write(f, Path("assets") / name / f.name)
+            asset_dir = ROOT / "assets" / name
+            if not asset_dir.is_dir():
+                continue
+            for f in asset_dir.iterdir():
+                if f.is_file():
+                    z.write(f, Path("assets") / name / f.name)
     return Response(buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="scene_{job_id}.zip"'})

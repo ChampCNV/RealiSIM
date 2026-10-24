@@ -241,7 +241,7 @@ def _frames_fallback(job, work):
             pad = 0.35 * max(px1 - px0, py1 - py0)
             cx0, cy0 = int(max(0, px0 - pad)), int(max(0, py0 - pad))
             cx1, cy1 = int(min(w, px1 + pad)), int(min(h, py1 + pad))
-            cv2.imwrite(str(out / f"view_{len(views)}.jpg"), img[cy0:cy1, cx0:cy1])
+            cv2.imwrite(str(out / f"view_{len(views)}.jpg"), img[cy0:cy1, cx0:cx1])
             m = 0.1 * max(px1 - px0, py1 - py0)
             box = [px0 - m - cx0, py0 - m - cy0, px1 + m - cx0, py1 + m - cy0]
             (out / f"view_{len(views)}.json").write_text(json.dumps(dict(object_box=box)))
