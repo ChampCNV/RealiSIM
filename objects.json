@@ -79,6 +79,38 @@
       1.0
     ]
   },
+  "masking_tape": {
+    "source": "Masking tape roll lying flat (partly used). Outer diameter 111 mm measured from the video with the AprilTag (22.3 mm) as a ruler, consistent in 3 frames; standard 3 in (76 mm) cardboard core. Width 18 mm (3/4 in, the common masking tape width; the roll is clearly lower than the 22 mm tag). Mass ~80 g: tape annulus 111/82 mm x 18 mm ~79 cm3 at ~0.9 g/cm3 + ~7 g core; weigh it to be exact. Friction: paper backing on cloth ~0.6",
+    "size_m": [
+      0.111,
+      0.111,
+      0.018
+    ],
+    "mass_kg": 0.08,
+    "material": "paper masking tape on a cardboard core",
+    "friction": [
+      0.6,
+      0.005,
+      0.0001
+    ]
+  },
+  "water_bottle": {
+    "source": "entered by the user",
+    "size_m": [
+      0.12
+    ],
+    "mass_kg": 0.03,
+    "material": "paper",
+    "friction": [
+      0.8,
+      0.005,
+      0.0001
+    ],
+    "tags": {
+      "front": 3,
+      "back": 3
+    }
+  },
   "celsius_can": {
     "source": "Celsius Sparkling Grape Rush, 12 fl oz slim aluminium can (opened, treated as empty). Size: 12 oz slim can ~6.13 in tall x 2.25 in wide (brainbound.blog slim can guide; Ball 202 slim can 6.13 in flanged height) = 57 x 57 x 156 mm. Mass: empty 12 oz aluminium can ~13 g (typical; 0.368 kg if full, 355 ml). Friction: painted aluminium on cloth ~0.5",
     "size_m": [

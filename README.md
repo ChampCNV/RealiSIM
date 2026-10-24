@@ -72,7 +72,10 @@ AprilTag lift policy, 2M training steps, 200 test attempts with random placement
 | Step | Command | What happens |
 |---|---|---|
 | 1. Object | `python photo2grasp.py asset celsius_can inputs\can_1.mp4 inputs\can_2.mp4` | Any number of videos or photos. The best 4 frames are picked by fixed rules (sharp, whole object, different sides). Real size, mass and friction come from `objects.json`, or you are asked (optional `--claude`: Claude looks them up online through the Anthropic API). TRELLIS builds the mesh, then cleanup, real size, collision shapes and a MuJoCo asset, plus a drop test |
-| 2. Look | `python photo2grasp.py check celsius_can` | The object next to the SO-100 in the MuJoCo viewer |
+| 2. Look | `python photo2grasp.py check celsius_can` (or `check --all`, `check a b`) | The object(s) next to the SO-100 at its zero pose, after a drop test. Several objects only in this viewer: calibration, tracking, training and running use one object at a time |
+| (any time) | `python photo2grasp.py list` | All objects with size, weight, tags and trained models |
+| (any time) | `python photo2grasp.py remove celsius_can [--models] [--purge]` | Takes an object out of the sim (asks you to type its name). Its mesh and properties are kept so `add` can bring it back; `--purge` deletes them, `--models` also its trained runs |
+| (any time) | `python photo2grasp.py add celsius_can [model file or asset folder]` | Adds back an object made before, by name (no video, no TRELLIS), or brings in a 3D model file (.obj .stl .ply .glb .gltf) or a ready asset folder |
 | (once) Arm | `python photo2grasp.py robot` | LeRobot-style setup: USB port, motor IDs, joint limits and directions (sim shown), gripper alignment, camera check. Skips what is already done |
 | 3. Camera | `python photo2grasp.py calibrate celsius_can` | Touch tag 0 with the gripper tip at 4 spots: the arm measures, so no ruler. Finds the environment camera's position and the real printed tag size |
 | 4. Train | `python photo2grasp.py train celsius_can --area wide [--colab]` | Checks the gripper can hold the object, places the tags, finds a look pose, then trains (starting from the trained Lego-tree model). `--colab` packs everything for a free Colab T4 instead (no Google Drive) |

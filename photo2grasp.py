@@ -1,7 +1,11 @@
 """Photo2Grasp: one command for the whole pipeline, step by step.
 
     python photo2grasp.py asset celsius_can inputs/can_1.mp4 inputs/can_2.mp4   # 1. videos/photos -> sim object
-    python photo2grasp.py check celsius_can                                     # 2. drop test + viewer
+    python photo2grasp.py add masking_tape                                      #    a removed/previous object, by name
+    python photo2grasp.py add masking_tape D:/models/tape.glb                   #    an existing 3D model / asset folder
+    python photo2grasp.py list                                                  #    all objects (+ trained models)
+    python photo2grasp.py remove celsius_can [--models] [--purge]               #    take an object out of the sim
+    python photo2grasp.py check celsius_can [lego_tree ...] / check --all      # 2. drop test + viewer
     python photo2grasp.py tags celsius_can [video]                              #    which tag IDs are on it
     python photo2grasp.py robot                                                 #    arm setup (only if needed)
     python photo2grasp.py calibrate celsius_can                                 # 3. environment camera (touch)
@@ -16,10 +20,13 @@ of its own every time: "run" and "calibrate" check that the arm is set up and on
 """
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
+
+import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 PY = sys.executable
@@ -72,17 +79,167 @@ def ensure_robot():
             robot_setup()
 
 
+def trained_models():
+    """{object name: [run dirs]} for every run with a policy in runs/."""
+    import torch
+    found = {}
+    for ck in sorted((ROOT / "runs").glob("*/actor_last.pt")):
+        try:
+            meta = torch.load(ck, map_location="cpu", weights_only=False)
+        except Exception:
+            continue
+        found.setdefault(meta.get("object", "lego_tree"), []).append(ck.parent)
+    return found
+
+
+MESH_TYPES = {".obj", ".stl", ".ply", ".glb", ".gltf", ".off"}
+
+
+def restore(name):
+    """Add back an object made before (or removed), by name: its saved mesh in outputs/<name> + its saved
+    size/mass/tags -> rebuilt asset. No video, no TRELLIS."""
+    work = ROOT / "outputs" / name
+    if (ROOT / "assets" / name / f"{name}.xml").exists():
+        print(f"'{name}' is already added (python photo2grasp.py check {name})")
+        return
+    if not (work / "raw_mesh.obj").exists():
+        made = sorted(p.parent.name for p in (ROOT / "outputs").glob("*/raw_mesh.obj")
+                      if not (ROOT / "assets" / p.parent.name).exists())
+        raise SystemExit(f"no saved mesh for '{name}'. Objects that can be added back by name: {made or 'none'}; "
+                         f"otherwise: python photo2grasp.py asset {name} <video>")
+    objects = json.loads((ROOT / "objects.json").read_text())
+    saved = work / "object.json"  # written by "remove"
+    if name not in objects and saved.exists():
+        objects[name] = json.loads(saved.read_text())
+        (ROOT / "objects.json").write_text(json.dumps(objects, indent=2))
+    print(f"adding '{name}' back from outputs/{name} (saved mesh{', size/mass/tags' if name in objects else ''})")
+    if call("make_asset.py", name, "--skip-mesh"):
+        call("make_scene.py", name, "--no-view")
+
+
+def add_existing(name, source):
+    """Bring in an object that already exists:
+    - an asset folder (<x>.xml + properties.json, made by this pipeline): copied to assets/<name>, renamed if needed,
+      its size/mass/friction copied into objects.json
+    - a 3D model file: skips TRELLIS and runs the rest of the asset step (clean-up, real size, collision shapes,
+      MuJoCo file, size and tag questions)"""
+    src = Path(source).resolve()
+    dest = ROOT / "assets" / name
+    if dest.exists():
+        raise SystemExit(f"assets/{name} already exists (python photo2grasp.py remove {name} first)")
+    if src.is_dir():
+        xmls = sorted(src.glob("*.xml"))
+        if len(xmls) != 1 or not (src / "properties.json").exists():
+            raise SystemExit("an asset folder needs exactly one <name>.xml and a properties.json")
+        old = xmls[0].stem
+        dest.mkdir(parents=True)
+        for f in src.iterdir():
+            if f.is_file():
+                target = dest / f.name.replace(old, name, 1) if f.name.startswith(old) else dest / f.name
+                if f.suffix in (".xml", ".json") and old != name:  # body, mesh and material names carry the object name
+                    target.write_text(f.read_text(encoding="utf-8").replace(old, name), encoding="utf-8")
+                else:
+                    shutil.copy2(f, target)
+        props = json.loads((dest / "properties.json").read_text())
+        objects = json.loads((ROOT / "objects.json").read_text())
+        keep = {k: props[k] for k in ("source", "size_m", "mass_kg", "material", "friction") if k in props}
+        objects[name] = {**keep, **{k: v for k, v in objects.get(name, {}).items() if k == "tags"}}
+        (ROOT / "objects.json").write_text(json.dumps(objects, indent=2))
+        print(f"added assets/{name} (from {src})")
+        if "tags" not in objects[name]:
+            sys.path.insert(0, str(ROOT / "pipeline"))
+            from tag_ids import tag_setup
+            tag_setup(name, [], ROOT / "objects.json")
+        call("make_scene.py", name, "--no-view")
+    elif src.suffix.lower() in MESH_TYPES:
+        import trimesh
+        work = ROOT / "outputs" / name
+        work.mkdir(parents=True, exist_ok=True)
+        mesh = trimesh.load(src, force="mesh")
+        if src.suffix.lower() in (".glb", ".gltf"):
+            shutil.copy2(src, work / "trellis.glb")  # textured: its colours are kept (same path as TRELLIS output)
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))  # glTF Y-up -> Z-up
+        mesh.export(work / "raw_mesh.obj")
+        print(f"model copied to outputs/{name}/raw_mesh.obj; building the asset (no TRELLIS needed)")
+        if call("make_asset.py", name, "--skip-mesh"):
+            call("make_scene.py", name, "--no-view")
+    else:
+        raise SystemExit(f"{src} is neither an asset folder nor a 3D model ({', '.join(sorted(MESH_TYPES))})")
+
+
+def list_objects():
+    objects = json.loads((ROOT / "objects.json").read_text())
+    models = trained_models()
+    names = sorted({p.parent.name for p in (ROOT / "assets").glob("*/properties.json")})
+    if not names:
+        print("no objects yet: python photo2grasp.py asset <name> <video>")
+    for name in names:
+        props = json.loads((ROOT / "assets" / name / "properties.json").read_text())
+        tags = objects.get(name, {}).get("tags")
+        show = lambda i: "none" if i is None else i  # noqa: E731
+        tag_text = f"robot side {show(tags['front'])}, camera side {show(tags['back'])}" if tags else             "not set (defaults 0 / 1)"
+        size = " x ".join(f"{v * 100:.1f}" for v in props["size_m"])
+        runs = ", ".join(r.name for r in models.get(name, [])) or "none"
+        print(f"{name}\n   size {size} cm | {props['mass_kg'] * 1000:.0f} g | tags: {tag_text}\n"
+              f"   trained models: {runs}")
+
+
+def remove_object(name, with_models=False, purge=False):
+    """Deletes the object from the sim (assets/ + objects.json). Its mesh and properties stay in outputs/<name> so
+    "add <name>" can bring it back, unless purge."""
+    targets = [ROOT / "assets" / name] + ([ROOT / "outputs" / name] if purge else [])
+    objects = json.loads((ROOT / "objects.json").read_text())
+    runs = trained_models().get(name, []) if with_models else []
+    if not any(t.exists() for t in targets) and name not in objects and not runs:
+        print(f"nothing called '{name}' (python photo2grasp.py list shows the objects)")
+        return
+    print(f"this deletes '{name}':")
+    for t in targets + runs:
+        if t.exists():
+            print(f"   {t.relative_to(ROOT)}")
+    if name in objects:
+        print(f"   its entry in objects.json (size, weight, tags)")
+    if not with_models and trained_models().get(name):
+        print("   (its trained models in runs/ are kept; add --models to delete them too)")
+    if not purge and (ROOT / "outputs" / name / "raw_mesh.obj").exists():
+        print(f"   (its mesh + properties stay in outputs/{name}: 'add {name}' brings it back; --purge deletes them)")
+    if name == "lego_tree":
+        print("   note: the Lego tree's trained model is the starting point for training new objects")
+    if input(f"type the name ({name}) to confirm: ").strip() != name:
+        print("not deleted")
+        return
+    if name in objects and not purge and (ROOT / "outputs" / name).exists():  # kept for "add <name>"
+        (ROOT / "outputs" / name / "object.json").write_text(json.dumps(objects[name], indent=2))
+    for t in targets + runs:
+        if t.exists():
+            shutil.rmtree(t)
+    if name in objects:
+        del objects[name]
+        (ROOT / "objects.json").write_text(json.dumps(objects, indent=2))
+    print(f"'{name}' deleted")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="step", required=True)
     a = sub.add_parser("asset", help="videos/photos -> MuJoCo object")
     a.add_argument("name")
     a.add_argument("inputs", nargs="+")
+    ad = sub.add_parser("add", help="add an object made before (by name), or an asset folder / 3D model file")
+    ad.add_argument("name")
+    ad.add_argument("source", nargs="?",
+                    help="optional: asset folder (<x>.xml + properties.json) or model file (.obj .stl .ply .glb .gltf)")
+    sub.add_parser("list", help="all objects with size, weight, tags and trained models")
+    rm = sub.add_parser("remove", help="delete an object (asks to confirm)")
+    rm.add_argument("name")
+    rm.add_argument("--models", action="store_true", help="also delete its trained models in runs/")
+    rm.add_argument("--purge", action="store_true", help="also delete its saved mesh (then it cannot be added back)")
     tg = sub.add_parser("tags", help="set which AprilTag IDs are on an object (from a video, or typed)")
     tg.add_argument("name")
     tg.add_argument("inputs", nargs="*", help="optional video/photo showing the tags")
-    c = sub.add_parser("check", help="drop test + viewer with the SO-100")
-    c.add_argument("name")
+    c = sub.add_parser("check", help="drop test + viewer with the SO-100 (one, several, or --all objects)")
+    c.add_argument("names", nargs="*")
+    c.add_argument("--all", action="store_true", help="every object in the sim")
     r = sub.add_parser("robot", help="one-time arm setup (asks what to redo)")
     r.add_argument("--all", action="store_true", help="go through every step")
     k = sub.add_parser("calibrate", help="environment camera position (touch the tag with the gripper)")
@@ -110,12 +267,21 @@ def main():
         if ok:
             call("make_scene.py", args.name, "--no-view")
             print(f"next: python photo2grasp.py check {args.name}   (look at it)   or   train {args.name}")
+    elif args.step == "add":
+        if args.source:
+            add_existing(args.name, args.source)
+        else:
+            restore(args.name)
+    elif args.step == "list":
+        list_objects()
+    elif args.step == "remove":
+        remove_object(args.name, args.models, args.purge)
     elif args.step == "tags":
         sys.path.insert(0, str(ROOT / "pipeline"))
         from tag_ids import tag_setup
         tag_setup(args.name, [str(Path(p).resolve()) for p in args.inputs], ROOT / "objects.json")
     elif args.step == "check":
-        call("make_scene.py", args.name)
+        call("make_scene.py", *(["--all"] if args.all or not args.names else args.names))
     elif args.step == "robot":
         robot_setup(force=args.all)
     elif args.step == "calibrate":

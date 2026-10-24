@@ -12,6 +12,11 @@
     0.005,
     0.0001
   ],
+  "tags": {
+    "front": null,
+    "back": 2
+  },
+  "tag_height_m": 0.084,
   "center_of_mass": [
     0.0003,
     0.0,
