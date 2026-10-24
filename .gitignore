@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv*/
+
+# Third-party repos (cloned in Setup, see README)
+third_party/
+
+# Personal data and working files
+inputs/
+outputs/*
+!outputs/apriltags/
+!outputs/demo/
+outputs/demo/*.mp4
+*.zip
+Screenshot*.png
+
+# Training runs: keep only the final AprilTag policy
+runs/*
+!runs/tag_colab_2m/
+runs/tag_colab_2m/train_state.pt
+runs/tag_colab_2m/actor_last.pt
+
+# Calibration of one specific arm (made by robot/calibrate.py)
+robot/calibration/
+
+# Generated textures (rebuilt automatically)
+assets/apriltag/

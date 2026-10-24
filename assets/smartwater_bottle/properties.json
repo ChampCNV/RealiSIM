@@ -1,0 +1,22 @@
+{
+  "source": "Label: smartwater alkaline 532 mL (18 fl oz) aluminium bottle, EMPTY (user). Height from the scan. Mass = empty can, ~35 g estimate (not verified online). Friction: metal on wood estimate",
+  "mass_kg": 0.035,
+  "material": "aluminium",
+  "friction": [
+    0.35,
+    0.005,
+    0.0001
+  ],
+  "height_m": 0.2504756202708955,
+  "size_m": [
+    0.0698,
+    0.0698,
+    0.2505
+  ],
+  "center_of_mass": [
+    -0.0001,
+    0.0001,
+    0.1168
+  ],
+  "collision_pieces": 2
+}

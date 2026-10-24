@@ -1,0 +1,27 @@
+{
+  "source": "SO-ARM100 repo, STL/SO101/Individual/Motor_holder_SO101_Base.stl: 55.1 x 38.1 x 28.0 mm ring, 13.3 cm3 -> ~16 g PLA (1.24 g/cm3) if solid; friction = hard plastic on dry wood",
+  "size_m": [
+    0.0551,
+    0.0381,
+    0.028
+  ],
+  "mass_kg": 0.015,
+  "material": "PLA plastic (3D printed)",
+  "friction": [
+    0.4,
+    0.005,
+    0.0001
+  ],
+  "rgba": [
+    0.95,
+    0.95,
+    0.92,
+    1.0
+  ],
+  "center_of_mass": [
+    -0.0001,
+    0.0004,
+    0.014
+  ],
+  "collision_pieces": 16
+}

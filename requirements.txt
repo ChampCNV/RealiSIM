@@ -1,0 +1,17 @@
+coacd==1.0.14
+matplotlib==3.10.9
+mujoco==3.16.0
+numpy==2.2.6
+onnxruntime==1.23.2
+pillow==12.3.0
+pycolmap==4.2.1
+rembg==2.0.69
+scikit-image==0.25.2
+scipy==1.15.3
+trimesh==5.1.1
+fast_simplification==0.2.0
+huggingface_hub==0.36.2
+gradio_client==1.14.0
+opencv-python==5.0.0.93  # GUI build (camera/policy preview windows); replaces rembg's opencv-python-headless: pip uninstall -y opencv-python-headless
+feetech-servo-sdk==1.0.0  # SO-100 servos (robot/)
+pyserial==3.5

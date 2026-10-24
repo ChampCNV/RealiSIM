@@ -1,0 +1,18 @@
+{
+  "port": "COM13",
+  "baudrate": 1000000,
+  "calibration": "robot/calibration/so100_follower.json",
+  "sim_mapping": "robot/calibration/sim_mapping.json",
+  "wrist_camera": {
+    "index": 0,
+    "width": 1280,
+    "height": 720,
+    "fixed_exposure": null,
+    "vertical_fov_deg": null
+  },
+  "pid": {
+    "p": 6,
+    "i": 1,
+    "d": 3
+  }
+}

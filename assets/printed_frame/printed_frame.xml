@@ -1,0 +1,54 @@
+<mujoco model="printed_frame">
+  <!-- Unbranded 3D-printed PLA sleeve; no online match. Size is a visual estimate, mass = PLA 1.24 g/cm3 x estimated wall volume, friction = hard plastic on dry wood -->
+  <compiler meshdir="."/>
+  <default>
+    <default class="printed_frame_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+    </default>
+    <default class="printed_frame_collision">
+      <geom type="mesh" group="3" condim="4" friction="0.4 0.005 0.0001"/>
+    </default>
+  </default>
+  <asset>
+    <mesh name="printed_frame_visual" file="printed_frame_visual.obj"/>
+    <mesh name="printed_frame_collision_0" file="printed_frame_collision_0.obj"/>
+    <mesh name="printed_frame_collision_1" file="printed_frame_collision_1.obj"/>
+    <mesh name="printed_frame_collision_2" file="printed_frame_collision_2.obj"/>
+    <mesh name="printed_frame_collision_3" file="printed_frame_collision_3.obj"/>
+    <mesh name="printed_frame_collision_4" file="printed_frame_collision_4.obj"/>
+    <mesh name="printed_frame_collision_5" file="printed_frame_collision_5.obj"/>
+    <mesh name="printed_frame_collision_6" file="printed_frame_collision_6.obj"/>
+    <mesh name="printed_frame_collision_7" file="printed_frame_collision_7.obj"/>
+    <mesh name="printed_frame_collision_8" file="printed_frame_collision_8.obj"/>
+    <mesh name="printed_frame_collision_9" file="printed_frame_collision_9.obj"/>
+    <mesh name="printed_frame_collision_10" file="printed_frame_collision_10.obj"/>
+    <mesh name="printed_frame_collision_11" file="printed_frame_collision_11.obj"/>
+    <mesh name="printed_frame_collision_12" file="printed_frame_collision_12.obj"/>
+    <mesh name="printed_frame_collision_13" file="printed_frame_collision_13.obj"/>
+    <mesh name="printed_frame_collision_14" file="printed_frame_collision_14.obj"/>
+    <mesh name="printed_frame_collision_15" file="printed_frame_collision_15.obj"/>
+  </asset>
+  <worldbody>
+    <body name="printed_frame">
+      <freejoint name="printed_frame_joint"/>
+      <inertial pos="0.00109418 6.33042e-06 0.0116268" mass="0.012" fullinertia="1.15647e-06 2.36455e-06 2.76968e-06 -1.75703e-07 -3.12901e-08 -7.84935e-08"/>
+      <geom class="printed_frame_visual" mesh="printed_frame_visual" rgba="0.95 0.95 0.92 1"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_0"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_1"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_2"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_3"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_4"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_5"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_6"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_7"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_8"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_9"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_10"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_11"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_12"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_13"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_14"/>
+      <geom class="printed_frame_collision" mesh="printed_frame_collision_15"/>
+    </body>
+  </worldbody>
+</mujoco>

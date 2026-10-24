@@ -1,0 +1,32 @@
+{
+  "source": "Unbranded 3D-printed PLA sleeve; no online match. Size is a visual estimate, mass = PLA 1.24 g/cm3 x estimated wall volume, friction = hard plastic on dry wood",
+  "size_m": [
+    0.045,
+    0.035,
+    0.025
+  ],
+  "mass_kg": 0.012,
+  "material": "PLA plastic (3D printed)",
+  "friction": [
+    0.4,
+    0.005,
+    0.0001
+  ],
+  "rgba": [
+    0.95,
+    0.95,
+    0.92,
+    1.0
+  ],
+  "rotate_deg": [
+    90,
+    0,
+    0
+  ],
+  "center_of_mass": [
+    0.0011,
+    0.0,
+    0.0116
+  ],
+  "collision_pieces": 16
+}

@@ -1,0 +1,28 @@
+{
+  "source": "YCB object set, 005_tomato_soup_can (66 mm dia x 101 mm, 349 g)",
+  "height_m": 0.101,
+  "mass_kg": 0.349,
+  "material": "steel can with paper label",
+  "friction": [
+    0.6,
+    0.005,
+    0.0001
+  ],
+  "rgba": [
+    0.75,
+    0.15,
+    0.12,
+    1.0
+  ],
+  "size_m": [
+    0.0729,
+    0.0719,
+    0.101
+  ],
+  "center_of_mass": [
+    -0.0005,
+    -0.0017,
+    0.0517
+  ],
+  "collision_pieces": 15
+}

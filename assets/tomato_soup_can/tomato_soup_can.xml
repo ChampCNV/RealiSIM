@@ -1,0 +1,52 @@
+<mujoco model="tomato_soup_can">
+  <!-- YCB object set, 005_tomato_soup_can (66 mm dia x 101 mm, 349 g) -->
+  <compiler meshdir="."/>
+  <default>
+    <default class="tomato_soup_can_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+    </default>
+    <default class="tomato_soup_can_collision">
+      <geom type="mesh" group="3" condim="4" friction="0.6 0.005 0.0001"/>
+    </default>
+  </default>
+  <asset>
+    <mesh name="tomato_soup_can_visual" file="tomato_soup_can_visual.obj"/>
+    <mesh name="tomato_soup_can_collision_0" file="tomato_soup_can_collision_0.obj"/>
+    <mesh name="tomato_soup_can_collision_1" file="tomato_soup_can_collision_1.obj"/>
+    <mesh name="tomato_soup_can_collision_2" file="tomato_soup_can_collision_2.obj"/>
+    <mesh name="tomato_soup_can_collision_3" file="tomato_soup_can_collision_3.obj"/>
+    <mesh name="tomato_soup_can_collision_4" file="tomato_soup_can_collision_4.obj"/>
+    <mesh name="tomato_soup_can_collision_5" file="tomato_soup_can_collision_5.obj"/>
+    <mesh name="tomato_soup_can_collision_6" file="tomato_soup_can_collision_6.obj"/>
+    <mesh name="tomato_soup_can_collision_7" file="tomato_soup_can_collision_7.obj"/>
+    <mesh name="tomato_soup_can_collision_8" file="tomato_soup_can_collision_8.obj"/>
+    <mesh name="tomato_soup_can_collision_9" file="tomato_soup_can_collision_9.obj"/>
+    <mesh name="tomato_soup_can_collision_10" file="tomato_soup_can_collision_10.obj"/>
+    <mesh name="tomato_soup_can_collision_11" file="tomato_soup_can_collision_11.obj"/>
+    <mesh name="tomato_soup_can_collision_12" file="tomato_soup_can_collision_12.obj"/>
+    <mesh name="tomato_soup_can_collision_13" file="tomato_soup_can_collision_13.obj"/>
+    <mesh name="tomato_soup_can_collision_14" file="tomato_soup_can_collision_14.obj"/>
+  </asset>
+  <worldbody>
+    <body name="tomato_soup_can">
+      <freejoint name="tomato_soup_can_joint"/>
+      <inertial pos="-0.00052596 -0.00168261 0.0516714" mass="0.349" fullinertia="0.000355569 0.000354764 0.000178171 -2.30621e-07 -1.03473e-06 -5.25508e-06"/>
+      <geom class="tomato_soup_can_visual" mesh="tomato_soup_can_visual" rgba="0.75 0.15 0.12 1"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_0"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_1"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_2"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_3"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_4"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_5"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_6"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_7"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_8"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_9"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_10"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_11"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_12"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_13"/>
+      <geom class="tomato_soup_can_collision" mesh="tomato_soup_can_collision_14"/>
+    </body>
+  </worldbody>
+</mujoco>
