@@ -17,6 +17,10 @@ sys.path.insert(0, str(ROOT / "pipeline"))
 from mesh_to_mjcf import mesh_to_mjcf  # noqa: E402
 from trellis_mesh import trellis_mesh  # noqa: E402
 
+# A size from a spec sheet is exact, the scan's is a point-cloud percentile; past this relative difference
+# the lookup is probably for a different product or variant, so the scan wins.
+SIZE_TOLERANCE = 0.25
+
 
 def main(work, reuse=False):
     work = Path(work)
@@ -57,22 +61,29 @@ def main(work, reuse=False):
         meta = info[obj["name"]]
         name = meta["name"]
         views = sorted((work / "objects" / obj["name"]).glob("view_*.jpg"))
+        # product photos (e.g. found online): sharper labels than the video frames, used for shape and texture
+        refs = [work / r for r in meta.get("reference_images", [])]
         mesh_dir = work / "objects" / obj["name"]
         if reuse and (mesh_dir / "raw_mesh.obj").exists():
             print(f"{name}: reusing existing mesh")
             raw = mesh_dir / "raw_mesh.obj"
         else:
-            print(f"{name}: {len(views)} views -> TRELLIS")
+            print(f"{name}: {len(views)} views + {len(refs)} reference photos -> TRELLIS")
             boxes = [json.loads(v.with_suffix(".json").read_text())["object_box"] for v in views]
-            raw = trellis_mesh(views, mesh_dir, keep_boxes=boxes)
-        props = {k: v for k, v in meta.items() if k != "name"}
+            raw = trellis_mesh(views + refs, mesh_dir, keep_boxes=boxes + [None] * len(refs))
+        props = {k: v for k, v in meta.items() if k not in ("name", "reference_images")}
         props["height_m"] = obj["height"]  # measured by the scan
+        if "size_m" in props and abs(props["size_m"][2] / obj["height"] - 1) > SIZE_TOLERANCE:
+            print(f"   looked-up height {props['size_m'][2] * 100:.1f} cm disagrees with the scan "
+                  f"({obj['height'] * 100:.1f} cm): using the scan")
+            del props["size_m"]
         xml = mesh_to_mjcf(raw, name, props, ROOT / "assets" / name, textured_mesh_path=mesh_dir / "trellis.glb")
         size = json.loads((xml.parent / "properties.json").read_text())["size_m"]
         print(f"   -> {xml}  size {np.round(np.array(size) * 100, 1)} cm")
         layout["objects"].append(dict(name=name, x=obj["x"], y=obj["y"]))
     (work / "layout.json").write_text(json.dumps(layout, indent=2))
     print(f"layout written: {work / 'layout.json'}")
+    return layout
 
 
 if __name__ == "__main__":

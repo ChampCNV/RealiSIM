@@ -1,0 +1,29 @@
+{
+  "source": "Video frame of a standing Celsius can. Size is the 12 oz Ball Sleek spec (57.4 mm dia, 157 mm tall), mass 0.368 kg is an estimate (355 ml + can).",
+  "size_m": [
+    0.0574,
+    0.0574,
+    0.157
+  ],
+  "mass_kg": 0.368,
+  "material": "aluminium can, filled",
+  "friction": [
+    0.5,
+    0.005,
+    0.0001
+  ],
+  "collision": "cylinder",
+  "center_of_mass": [
+    0.0,
+    0.0,
+    0.0785
+  ],
+  "collision_pieces": 1,
+  "collision_accuracy": {
+    "overshoot_mm_p95": 7.61,
+    "overshoot_mm_max": 20.52,
+    "undershoot_mm_p95": 1.41,
+    "undershoot_mm_max": 2.1,
+    "surface_within_1mm_pct": 98.1
+  }
+}

@@ -21,15 +21,51 @@ photos ─► TRELLIS 3D mesh ─► clean + straighten + scale to real size ─
 ```
 
 **1. Photos → MuJoCo object** (`make_asset.py`, `pipeline/`)
-- 3D mesh from one or more photos with **TRELLIS** (Hugging Face Space).
+- 3D mesh from one or more photos with **TRELLIS** (Hugging Face Space), at the most detailed settings the
+  Space allows.
+- Texture repainted from the real photos (`pipeline/texture_projection.py`): each photo is registered to
+  the mesh and its pixels replace TRELLIS's re-drawn colours wherever it sees the surface head-on, so label
+  text stays readable. Surface no photo saw keeps the TRELLIS colours.
 - Generic mesh cleanup, no per-object tweaks: background removal, stable resting pose, real-world size,
-  convex collision pieces (CoACD), mass from density x volume, textured visual mesh.
-- Real size, mass and friction come from known data (`objects.json`) with the source written down.
+  mass from density x volume, textured visual mesh.
+- Collision: cans, bottles and boxes get one primitive (`"collision": "cylinder"` or `"box"`) at the measured
+  size, the exact contact surface. Everything else gets a fine CoACD decomposition of the full-resolution
+  mesh (`coacd_threshold`, `max_convex_hulls` per object to trade accuracy for simulation speed).
+- `properties.json` reports how far the collision surface strays from the object surface (overshoot and
+  undershoot in mm), and `preview.png` shows the asset in MuJoCo: visual mesh on top, collision below.
+- Real size, mass and friction come from known data (`objects.json`) with the source written down. Give
+  `size_m` (all three dimensions) rather than `height_m`, so width and depth are right too.
 
 **2. Video of a table → MuJoCo scene** (`scene/`)
 - COLMAP camera poses and point cloud from a phone video.
 - Finds the table plane and metric scale from the table's real size, then every object standing on it.
 - Builds each object with TRELLIS and places the table, objects and SO-100 in one MuJoCo scene.
+
+**Scene API** (`api/`): the video pipeline as an HTTP service, with the hand-written `info.json` replaced
+by Gemini and web search. One background job per video, in `outputs/jobs/<id>/`:
+
+```
+reconstruct ─► find_objects ─► object_views ─► identify ─► reference_images ─► physics ─► build ─► render
+  (COLMAP)     (table, scale,   (best crops)    (Gemini:     (Google Images via    (Gemini +    (TRELLIS   (MuJoCo
+                positions)                       what is it)  SerpAPI, Gemini      Google Search: + MJCF)    renders)
+                                                              keeps exact matches)  size, mass, friction)
+```
+
+- Web product photos go to TRELLIS together with the video crops, and also repaint the texture, so labels
+  come out sharper than the video alone allows.
+- A looked-up height that differs from the scanned height by more than 25 % is ignored and the scan is used.
+- With `review=true` the job pauses after the physics lookup. Correct an object with `PATCH`, then resume.
+
+```bash
+.venv/bin/python -m uvicorn api.server:app --port 8000          # docs at http://localhost:8000/docs
+curl -F video=@table.mp4 -F table_length_cm=180 -F table_width_cm=75 -F table_height_cm=74 -F review=true \
+     localhost:8000/jobs                                         # -> {"id": ...}
+curl localhost:8000/jobs/<id>                                    # status, stage, objects found so far
+curl -X PATCH localhost:8000/jobs/<id>/objects/object_0 -H 'content-type: application/json' \
+     -d '{"physics": {"mass_kg": 0.35, "friction": 0.5}}'
+curl -X POST "localhost:8000/jobs/<id>/run?from_stage=build"     # resume (or rerun any finished stage)
+curl -o scene.zip localhost:8000/jobs/<id>/scene.zip             # layout + renders + MuJoCo assets
+```
 
 **3. Simulation training, AprilTag tracking** (`sim2real/`)
 - The policy never sees images. It gets joint angles plus the object's position from an **AprilTag** on the
@@ -123,8 +159,9 @@ Details for each robot step are in [robot/README.md](robot/README.md).
 |---|---|
 | `make_asset.py`, `make_scene.py` | Photos → MuJoCo asset; drop test + viewer |
 | `objects.json` | Real size, mass, friction (with sources) per object |
-| `pipeline/` | TRELLIS client, background removal, mesh cleanup → MJCF |
+| `pipeline/` | TRELLIS client, background removal, photo texture projection, mesh cleanup → MJCF, preview |
 | `scene/` | Video → table scene in MuJoCo (COLMAP, table plane, objects) |
+| `api/` | HTTP service around `scene/`: Gemini identification + physics, web reference photos, job runner |
 | `assets/` | Generated MuJoCo objects (Lego tree, table, bottle, ...) |
 | `sim2real/` | `tag_env.py` (task + simulated AprilTag detection), `train_tag.py` (SAC), `view_tag_env.py` |
 | `robot/` | Real SO-100: motor setup, calibration, digital twin, policy runner |
@@ -145,7 +182,10 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/google-deepmi
 git -C third_party/mujoco_menagerie sparse-checkout set trs_so_arm100
 ```
 
-Set `HF_TOKEN` (Hugging Face) as an environment variable for TRELLIS. Never commit it.
+Set `HF_TOKEN` as an environment variable, or put `HF_TOKEN=...` in a `.env` file at the repo root (gitignored). TRELLIS reads either. Never commit the token.
+The scene API also reads `GEMINI_API_KEY` (required; [Google AI Studio](https://aistudio.google.com/apikey)),
+`SERPAPI_API_KEY` (optional web photos; [SerpAPI](https://serpapi.com)) and `GEMINI_MODEL` (default
+`gemini-flash-latest`) the same way.
 
 ## Credits
 

@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "pipeline"))
 
 from mesh_to_mjcf import mesh_to_mjcf  # noqa: E402
-from trellis_mesh import trellis_mesh  # noqa: E402
+from preview import save_preview  # noqa: E402
 
 
 def main():
@@ -33,15 +33,20 @@ def main():
     if args.skip_mesh:
         raw_mesh = work_dir / "raw_mesh.obj"
     else:
-        print(f"[1/2] {len(args.images)} image(s) -> mesh (TRELLIS on Hugging Face)")
+        from trellis_mesh import trellis_mesh  # needs the Hugging Face client and rembg
+
+        print(f"[1/3] {len(args.images)} image(s) -> mesh (TRELLIS on Hugging Face), texture from the photos")
         raw_mesh = trellis_mesh(args.images, work_dir)
 
-    print("[2/2] mesh -> MuJoCo asset")
+    print("[2/3] mesh -> MuJoCo asset")
     textured = work_dir / "trellis.glb"  # TRELLIS also gives colours; keep them when available
     xml_path = mesh_to_mjcf(raw_mesh, args.name, props, ROOT / "assets" / args.name,
                             textured_mesh_path=textured if textured.exists() else None)
     print(f"Done: {xml_path}")
     print((xml_path.parent / "properties.json").read_text())
+
+    print("[3/3] preview")
+    print(f"Preview (visual | collision): {save_preview(xml_path, args.name)}")
 
 
 if __name__ == "__main__":
