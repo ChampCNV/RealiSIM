@@ -222,7 +222,9 @@ def _frames_fallback(job, work):
         raise RuntimeError("no objects identified in the frames")
     n = len(found.objects)
     xs = np.linspace(-(n - 1) * 0.09, (n - 1) * 0.09, n)
-    y = job["table"]["width"] / 2 - 0.14  # near the edge, inside the arm's reach
+    # The arm is bolted 4 cm in from the edge and its folded rest pose reaches about 15 cm forward.
+    # 24 cm in front of that mount is still inside the 30 cm reach, and the arm does not knock the object over.
+    y = job["table"]["width"] / 2 - 0.28
     for i, item in enumerate(found.objects):
         key = f"object_{i}"
         out = work / "objects" / key

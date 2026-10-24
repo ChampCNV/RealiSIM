@@ -1,0 +1,30 @@
+{
+  "source": "Custom LEGO build (TreeHacks), no online model. Size measured from photo 4 using the 1x4 tile (31.8 mm, LEGO standard) as a ruler: ~69 x 18 x 75 mm. Density 477 kg/m3 = 2x4 brick 2.3 g / 31.8x15.8x9.6 mm (hollow ABS). Friction: no measured ABS value found online; 0.4 (hard plastic), randomized in training",
+  "size_m": [
+    0.069,
+    0.018,
+    0.075
+  ],
+  "material": "LEGO ABS plastic",
+  "friction": [
+    0.4,
+    0.005,
+    0.0001
+  ],
+  "collision": "mesh",
+  "density_kg_m3": 477,
+  "mass_kg": 0.01896,
+  "center_of_mass": [
+    -0.0,
+    -0.0,
+    0.0341
+  ],
+  "collision_pieces": 42,
+  "collision_accuracy": {
+    "overshoot_mm_p95": 0.37,
+    "overshoot_mm_max": 5.04,
+    "undershoot_mm_p95": 0.0,
+    "undershoot_mm_max": 0.0,
+    "surface_within_1mm_pct": 100.0
+  }
+}

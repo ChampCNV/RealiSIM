@@ -1,0 +1,108 @@
+<mujoco model="treehacks_2025_lego_tree">
+  <!-- Custom LEGO build (TreeHacks), no online model. Size measured from photo 4 using the 1x4 tile (31.8 mm, LEGO standard) as a ruler: ~69 x 18 x 75 mm. Density 477 kg/m3 = 2x4 brick 2.3 g / 31.8x15.8x9.6 mm (hollow ABS). Friction: no measured ABS value found online; 0.4 (hard plastic), randomized in training -->
+  <compiler meshdir="."/>
+  <default>
+    <default class="treehacks_2025_lego_tree_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+    </default>
+    <default class="treehacks_2025_lego_tree_collision">
+      <geom type="mesh" group="3" condim="4" friction="0.4 0.005 0.0001"/>
+    </default>
+  </default>
+  <asset>
+    <mesh name="treehacks_2025_lego_tree_visual" file="treehacks_2025_lego_tree_visual.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_0" file="treehacks_2025_lego_tree_collision_0.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_1" file="treehacks_2025_lego_tree_collision_1.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_2" file="treehacks_2025_lego_tree_collision_2.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_3" file="treehacks_2025_lego_tree_collision_3.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_4" file="treehacks_2025_lego_tree_collision_4.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_5" file="treehacks_2025_lego_tree_collision_5.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_6" file="treehacks_2025_lego_tree_collision_6.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_7" file="treehacks_2025_lego_tree_collision_7.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_8" file="treehacks_2025_lego_tree_collision_8.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_9" file="treehacks_2025_lego_tree_collision_9.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_10" file="treehacks_2025_lego_tree_collision_10.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_11" file="treehacks_2025_lego_tree_collision_11.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_12" file="treehacks_2025_lego_tree_collision_12.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_13" file="treehacks_2025_lego_tree_collision_13.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_14" file="treehacks_2025_lego_tree_collision_14.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_15" file="treehacks_2025_lego_tree_collision_15.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_16" file="treehacks_2025_lego_tree_collision_16.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_17" file="treehacks_2025_lego_tree_collision_17.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_18" file="treehacks_2025_lego_tree_collision_18.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_19" file="treehacks_2025_lego_tree_collision_19.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_20" file="treehacks_2025_lego_tree_collision_20.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_21" file="treehacks_2025_lego_tree_collision_21.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_22" file="treehacks_2025_lego_tree_collision_22.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_23" file="treehacks_2025_lego_tree_collision_23.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_24" file="treehacks_2025_lego_tree_collision_24.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_25" file="treehacks_2025_lego_tree_collision_25.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_26" file="treehacks_2025_lego_tree_collision_26.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_27" file="treehacks_2025_lego_tree_collision_27.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_28" file="treehacks_2025_lego_tree_collision_28.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_29" file="treehacks_2025_lego_tree_collision_29.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_30" file="treehacks_2025_lego_tree_collision_30.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_31" file="treehacks_2025_lego_tree_collision_31.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_32" file="treehacks_2025_lego_tree_collision_32.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_33" file="treehacks_2025_lego_tree_collision_33.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_34" file="treehacks_2025_lego_tree_collision_34.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_35" file="treehacks_2025_lego_tree_collision_35.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_36" file="treehacks_2025_lego_tree_collision_36.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_37" file="treehacks_2025_lego_tree_collision_37.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_38" file="treehacks_2025_lego_tree_collision_38.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_39" file="treehacks_2025_lego_tree_collision_39.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_40" file="treehacks_2025_lego_tree_collision_40.obj"/>
+    <mesh name="treehacks_2025_lego_tree_collision_41" file="treehacks_2025_lego_tree_collision_41.obj"/>
+    <texture name="treehacks_2025_lego_tree_texture" type="2d" file="treehacks_2025_lego_tree_texture.png"/>
+    <material name="treehacks_2025_lego_tree_material" texture="treehacks_2025_lego_tree_texture"/>
+  </asset>
+  <worldbody>
+    <body name="treehacks_2025_lego_tree">
+      <freejoint name="treehacks_2025_lego_tree_joint"/>
+      <inertial pos="-3.1034e-05 -4.95241e-06 0.0340555" mass="0.0189613" fullinertia="5.47894e-06 8.74003e-06 4.00063e-06 9.62761e-09 -3.43731e-09 -4.59859e-08"/>
+      <geom class="treehacks_2025_lego_tree_visual" mesh="treehacks_2025_lego_tree_visual" material="treehacks_2025_lego_tree_material"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_0"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_1"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_2"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_3"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_4"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_5"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_6"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_7"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_8"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_9"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_10"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_11"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_12"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_13"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_14"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_15"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_16"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_17"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_18"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_19"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_20"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_21"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_22"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_23"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_24"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_25"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_26"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_27"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_28"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_29"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_30"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_31"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_32"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_33"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_34"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_35"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_36"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_37"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_38"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_39"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_40"/>
+      <geom class="treehacks_2025_lego_tree_collision" mesh="treehacks_2025_lego_tree_collision_41"/>
+    </body>
+  </worldbody>
+</mujoco>

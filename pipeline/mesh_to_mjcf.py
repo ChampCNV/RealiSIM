@@ -61,8 +61,11 @@ def level_top(mesh):
 def scale_and_center(mesh, props):
     """Scale to real size and put the body origin at the bottom center.
 
-    `size_m` = [length, width, height] stretches each axis (fixes wrong proportions from the 3D model);
-    otherwise `height_m` scales uniformly.
+    A trusted `size_m` = [length, width, height] (objects.json, or a web lookup that found a source) stretches
+    each axis, which corrects a generated mesh with the wrong proportions. A guess (`size_trusted` false: the
+    lookup had no search results, or the model marked the numbers as an estimate) only sets the height.
+    Stretching a guess would turn a flat object into a thick one when the guess picked the wrong product.
+    With no `size_m`, `height_m` scales uniformly.
     """
     # Line the footprint up with x/y (tightest rectangle), otherwise per-axis scaling stretches it diagonally.
     to_rect, _ = trimesh.bounds.oriented_bounds_2D(mesh.vertices[:, :2])
@@ -71,8 +74,16 @@ def scale_and_center(mesh, props):
     mesh.apply_transform(yaw)
     if mesh.extents[1] > mesh.extents[0]:  # make x the long side so it matches [length, width]
         mesh.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 0, 1]))
-    if "size_m" in props:
-        mesh.apply_transform(np.diag(list(np.array(props["size_m"]) / mesh.extents) + [1]))
+    size = props.get("size_m")
+    if size is not None and len(size) == 3 and props.get("size_trusted", True):
+        mesh.apply_transform(np.diag(list(np.array(size) / mesh.extents) + [1]))
+    elif size is not None and len(size) == 3:
+        height = float(size[2])
+        print(f"   size {[round(v * 100, 1) for v in size]} cm is an estimate, so the mesh proportions stay; "
+              f"height {height * 100:.1f} cm")
+        mesh.apply_scale(height / mesh.extents[2])
+    elif size is not None:
+        mesh.apply_transform(np.diag(list(np.array(size) / mesh.extents) + [1]))
     else:
         mesh.apply_scale(props["height_m"] / mesh.extents[2])
     lo, hi = mesh.bounds

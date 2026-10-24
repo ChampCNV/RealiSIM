@@ -187,15 +187,20 @@ def physics(identity, height_m):
             model=model_name(), contents=prompt,
             config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]))
         result = Physics.model_validate(_json_block(resp.text))
+        searched = True
     except Exception as exc:
         print(f"   grounded lookup failed ({exc}); asking without search")
         resp = client().models.generate_content(
             model=model_name(), contents=prompt,
             config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=Physics))
         result = resp.parsed
+        searched = False
     L, W, H = (sorted(result.size_m[:2], reverse=True) + [result.size_m[2]])
     if result.collision == "cylinder":
         L = W = (L + W) / 2
     source = re.sub(r"-{2,}", "-", result.source)  # it ends up in an XML comment, where "--" is illegal
-    return dict(source=source, size_m=[L, W, H], mass_kg=result.mass_kg, material=result.material,
-                friction=[result.friction, 0.005, 0.0001], collision=result.collision)
+    # A catalog size or a sourced lookup may reshape the mesh. An estimate only supplies the height:
+    # stretching a guessed footprint is what made a flat build as thick as it is wide.
+    size_trusted = searched and not source.lower().lstrip().startswith("estimate")
+    return dict(source=source, size_m=[L, W, H], size_trusted=size_trusted, mass_kg=result.mass_kg,
+                material=result.material, friction=[result.friction, 0.005, 0.0001], collision=result.collision)
