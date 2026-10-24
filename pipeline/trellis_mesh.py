@@ -20,7 +20,8 @@ def trellis_mesh(image_paths, out_dir, seed=0, keep_boxes=None):
     """Returns the path of a Z-up mesh (.obj) built from one or more photos."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    client = Client(SPACE, hf_token=os.environ.get("HF_TOKEN"), verbose=False)
+    # generous timeout: the 5 s default fails photo uploads on slow (e.g. event) networks
+    client = Client(SPACE, hf_token=os.environ.get("HF_TOKEN"), verbose=False, httpx_kwargs={"timeout": 120})
     client.predict(api_name="/start_session")
 
     # Send our own cut-outs: the Space's background removal kept the table, which TRELLIS then modelled.

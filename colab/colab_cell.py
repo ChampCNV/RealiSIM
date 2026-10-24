@@ -1,14 +1,14 @@
 # SO-100 AprilTag lift: train in Colab without Google Drive.
+# On the laptop first: python photo2grasp.py train <object> --colab   (or: python colab/build_zip.py --object ...)
 # Open a scratchpad notebook (not saved to Drive): https://colab.research.google.com/notebooks/empty.ipynb
 # Runtime > Change runtime type > T4 GPU. Paste this whole cell and run it.
-#   New run:     pick so100_tag_train.zip
+#   New run:     pick so100_tag_train.zip (object, area and starting model are inside it)
 #   Continue:    pick so100_tag_train.zip AND your latest tag_backup_*.zip (select both files together)
-#   Env-camera fine-tune: pick so100_tag_train.zip AND tag_backup_2000k.zip -> continues the 2M model to 2.6M
 # Every 250k steps a tag_backup_<step>.zip downloads to your computer: if Colab disconnects, continue from it.
-import glob, os, re, shutil, subprocess, zipfile
+import os, re, shutil, subprocess, zipfile
 from google.colab import files
 
-STEPS = 2_600_000       # TOTAL steps: from the 2M backup that is 600k more (~2 h on a T4)
+STEPS = 1_000_000       # total steps unless the zip says otherwise (~3 h on a T4)
 BACKUP_EVERY = 250_000  # download a backup zip this often
 
 print("Pick so100_tag_train.zip (and a tag_backup_*.zip to continue a run)...")
@@ -17,13 +17,18 @@ code = [f for f in uploaded if "so100_tag_train" in f][0]
 zipfile.ZipFile(code).extractall("/content/so100_tag")
 subprocess.run("pip -q install mujoco==3.16.0", shell=True, check=True)
 
-cmd = ["python", "-u", "train_tag.py", "--steps", str(STEPS)]
+args_file = "/content/so100_tag/train_args.txt"
+train_args = open(args_file).read().split() if os.path.exists(args_file) else []
+cmd = ["python", "-u", "train_tag.py"] + train_args
+if "--steps" not in train_args:
+    cmd += ["--steps", str(STEPS)]
 backups = [f for f in uploaded if "tag_backup" in f]
 if backups:
     run_dir = "/content/so100_tag/runs/tag_resumed"
     latest = max(backups, key=lambda f: int(re.search(r"(\d+)k", f).group(1)))
     zipfile.ZipFile(latest).extractall(run_dir)
     cmd += ["--resume", run_dir]
+print("running:", " ".join(cmd[2:]))
 
 os.chdir("/content/so100_tag/sim2real")
 run_dir = None
@@ -41,4 +46,4 @@ for line in proc.stdout:
 proc.wait()
 
 shutil.make_archive("/content/tag_run", "zip", run_dir)
-files.download("/content/tag_run.zip")  # actor_best.pt + log -> unzip into robot_sim/runs/<name>/ on the laptop
+files.download("/content/tag_run.zip")  # put it in robot_sim/: python photo2grasp.py import tag_run.zip

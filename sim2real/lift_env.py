@@ -232,8 +232,8 @@ class LiftEnv:
         q0 = self.rest_qpos + (self.rng.normal(0, self.init_qpos_noise, 6) if self.dr else 0)
         d.qpos[self.qadr] = q0
         xy = self.spawn_center + self.rng.uniform(-1, 1, 2) * self.spawn_half
-        if self.face_robot:  # card (object +y) turned toward the robot base, within +-MARKER_YAW
-            yaw = np.arctan2(xy[0], -xy[1]) + self.rng.uniform(-1, 1) * MARKER_YAW
+        if self.face_robot:  # card (object +y) turned toward the robot base, within +-face_yaw
+            yaw = np.arctan2(xy[0], -xy[1]) + self.rng.uniform(-1, 1) * getattr(self, "face_yaw", MARKER_YAW)
         else:
             yaw = self.rng.uniform(-np.pi, np.pi)
         d.qpos[self.obj_qadr:self.obj_qadr + 7] = [xy[0], xy[1], 0.002, np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)]

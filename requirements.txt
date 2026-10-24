@@ -15,3 +15,4 @@ gradio_client==1.14.0
 opencv-python==5.0.0.93  # GUI build (camera/policy preview windows); replaces rembg's opencv-python-headless: pip uninstall -y opencv-python-headless
 feetech-servo-sdk==1.0.0  # SO-100 servos (robot/)
 pyserial==3.5
+anthropic==2.3.0  # Claude object lookup (pipeline/object_info.py)

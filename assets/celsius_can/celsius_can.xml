@@ -1,0 +1,36 @@
+<mujoco model="celsius_can">
+  <!-- Celsius Sparkling Grape Rush, 12 fl oz slim aluminium can (opened, treated as empty). Size: 12 oz slim can ~6.13 in tall x 2.25 in wide (brainbound.blog slim can guide; Ball 202 slim can 6.13 in flanged height) = 57 x 57 x 156 mm. Mass: empty 12 oz aluminium can ~13 g (typical; 0.368 kg if full, 355 ml). Friction: painted aluminium on cloth ~0.5 -->
+  <compiler meshdir="."/>
+  <default>
+    <default class="celsius_can_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+    </default>
+    <default class="celsius_can_collision">
+      <geom type="mesh" group="3" condim="4" friction="0.5 0.005 0.0001"/>
+    </default>
+  </default>
+  <asset>
+    <mesh name="celsius_can_visual" file="celsius_can_visual.obj"/>
+    <mesh name="celsius_can_collision_0" file="celsius_can_collision_0.obj"/>
+    <mesh name="celsius_can_collision_1" file="celsius_can_collision_1.obj"/>
+    <mesh name="celsius_can_collision_2" file="celsius_can_collision_2.obj"/>
+    <mesh name="celsius_can_collision_3" file="celsius_can_collision_3.obj"/>
+    <mesh name="celsius_can_collision_4" file="celsius_can_collision_4.obj"/>
+    <mesh name="celsius_can_collision_5" file="celsius_can_collision_5.obj"/>
+    <texture name="celsius_can_texture" type="2d" file="celsius_can_texture.png"/>
+    <material name="celsius_can_material" texture="celsius_can_texture"/>
+  </asset>
+  <worldbody>
+    <body name="celsius_can">
+      <freejoint name="celsius_can_joint"/>
+      <inertial pos="0.000265817 1.88314e-05 0.0736229" mass="0.013" fullinertia="2.55806e-05 2.51783e-05 4.68956e-06 5.21881e-09 -8.64329e-07 7.02735e-08"/>
+      <geom class="celsius_can_visual" mesh="celsius_can_visual" material="celsius_can_material"/>
+      <geom class="celsius_can_collision" mesh="celsius_can_collision_0"/>
+      <geom class="celsius_can_collision" mesh="celsius_can_collision_1"/>
+      <geom class="celsius_can_collision" mesh="celsius_can_collision_2"/>
+      <geom class="celsius_can_collision" mesh="celsius_can_collision_3"/>
+      <geom class="celsius_can_collision" mesh="celsius_can_collision_4"/>
+      <geom class="celsius_can_collision" mesh="celsius_can_collision_5"/>
+    </body>
+  </worldbody>
+</mujoco>

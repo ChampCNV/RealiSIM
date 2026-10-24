@@ -65,54 +65,33 @@ AprilTag lift policy, 2M training steps, 200 test attempts with random placement
 | Knocked the object over | 10% |
 | Missed the grasp | 2.5% |
 
-The policy in `runs/tag_colab_2m/actor_best.pt` uses the wrist camera only. The two-camera version (wrist +
-environment camera) continues training from it. Real-robot testing is in progress.
+`runs/tag_envcam_2250k/actor_last.pt` (wrist + environment camera) picks the Lego tree up on the real SO-100.
 
-## Quick start
+## The pipeline: one command, step by step
+
+| Step | Command | What happens |
+|---|---|---|
+| 1. Object | `python photo2grasp.py asset celsius_can inputs\can_1.mp4 inputs\can_2.mp4` | Any number of videos or photos. The best 4 frames are picked by fixed rules (sharp, whole object, different sides). Real size, mass and friction come from `objects.json`, or you are asked (optional `--claude`: Claude looks them up online through the Anthropic API). TRELLIS builds the mesh, then cleanup, real size, collision shapes and a MuJoCo asset, plus a drop test |
+| 2. Look | `python photo2grasp.py check celsius_can` | The object next to the SO-100 in the MuJoCo viewer |
+| (once) Arm | `python photo2grasp.py robot` | LeRobot-style setup: USB port, motor IDs, joint limits and directions (sim shown), gripper alignment, camera check. Skips what is already done |
+| 3. Camera | `python photo2grasp.py calibrate celsius_can` | Touch tag 0 with the gripper tip at 4 spots: the arm measures, so no ruler. Finds the environment camera's position and the real printed tag size |
+| 4. Train | `python photo2grasp.py train celsius_can --area wide [--colab]` | Checks the gripper can hold the object, places the tags, finds a look pose, then trains (starting from the trained Lego-tree model). `--colab` packs everything for a free Colab T4 instead (no Google Drive) |
+| (Colab) | `python photo2grasp.py import tag_run.zip` | Unpacks a run downloaded from Colab into `runs/` |
+| 5. Test | `python photo2grasp.py test runs\<run>\actor_last.pt` | 100 sim attempts (aim for at least 80 %) and a preview with both simulated cameras |
+| 6. Run | `python photo2grasp.py run runs\<run>\actor_last.pt --env-only` | Real robot: zero pose, look pose, find tag, pick up, slowly. Between attempts: `c` re-calibrates the camera. It warns when the two cameras disagree (the camera moved), keeps the gripper above the table and within reach, and logs every attempt to `runs/real_logs/` |
+
+Placement areas (measured from the base's rotation axis to the object): `default` 14.5-23.5 cm in front and ±8 cm
+sideways; `wide` 12-28 cm and ±15 cm. Tags: AprilTag 36h11 from `outputs/apriltags/`, ID 0 facing the robot
+and ID 1 on the back. On round objects, glue them on a small flat card first.
+
+Table scene from a video (separate tool):
 
 ```powershell
-# watch the trained policy in MuJoCo (both simulated webcams + the real OpenCV detector on them)
-cd sim2real
-..\.venv\Scripts\python.exe view_tag_env.py ..\runs\tag_colab_2m\actor_best.pt
-
-# make a MuJoCo object from photos (add its size/mass/friction to objects.json first)
-.\.venv\Scripts\python.exe make_asset.py so101_motor_holder inputs\printed_frame.jpg
-.\.venv\Scripts\python.exe make_scene.py so101_motor_holder        # drop test + viewer
-
-# table scene from a video
 python scene/reconstruct.py inputs/scene/1.mp4 outputs/scene
 python scene/find_objects.py outputs/scene --table 48 37 65         # table length, width, height in cm
 python scene/object_views.py outputs/scene
 python scene/build_scene.py outputs/scene
 python scene/view_scene.py outputs/scene
-```
-
-### Train the AprilTag policy
-
-```powershell
-cd sim2real
-..\.venv\Scripts\python.exe train_tag.py --steps 2000000
-```
-
-Or on Colab without Google Drive: run `python colab/build_zip.py`, then follow `colab/colab_cell.py`. It
-uploads the zip, trains on a T4, downloads a backup every 250k steps, and can resume from a backup if the
-session disconnects.
-
-### Run on the real SO-100
-
-Hardware: SO-100 arm (Feetech STS3215 servos), a USB webcam glued above the gripper jaws, optionally a
-second webcam across the table, and AprilTags 36h11 printed from `outputs/apriltags/` (ID 0 on the front of
-the object, ID 1 on the back, 25 mm, centre 4 cm above the table).
-
-```powershell
-.\.venv\Scripts\python.exe robot\find_port.py        # find the arm's port -> robot/config.json
-.\.venv\Scripts\python.exe robot\setup_motors.py     # once per arm: motor IDs
-.\.venv\Scripts\python.exe robot\calibrate.py        # joint limits + directions, sim shown alongside
-.\.venv\Scripts\python.exe robot\twin.py             # digital twin, torque off
-
-# check the tag numbers with torque off, then run slowly
-.\.venv\Scripts\python.exe robot\run_tag_policy.py runs\tag_colab_2m\actor_best.pt --dry-run
-.\.venv\Scripts\python.exe robot\run_tag_policy.py runs\tag_colab_2m\actor_best.pt --speed 0.3
 ```
 
 Details for each robot step are in [robot/README.md](robot/README.md).
@@ -121,9 +100,10 @@ Details for each robot step are in [robot/README.md](robot/README.md).
 
 | Path | What it is |
 |---|---|
-| `make_asset.py`, `make_scene.py` | Photos → MuJoCo asset; drop test + viewer |
+| `photo2grasp.py` | The whole pipeline, step by step (see above) |
+| `make_asset.py`, `make_scene.py` | Videos/photos → MuJoCo asset; drop test + viewer |
 | `objects.json` | Real size, mass, friction (with sources) per object |
-| `pipeline/` | TRELLIS client, background removal, mesh cleanup → MJCF |
+| `pipeline/` | Frame picking from videos, Claude object lookup, TRELLIS client, background removal, mesh cleanup → MJCF |
 | `scene/` | Video → table scene in MuJoCo (COLMAP, table plane, objects) |
 | `assets/` | Generated MuJoCo objects (Lego tree, table, bottle, ...) |
 | `sim2real/` | `tag_env.py` (task + simulated AprilTag detection), `train_tag.py` (SAC), `view_tag_env.py` |
@@ -145,7 +125,8 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/google-deepmi
 git -C third_party/mujoco_menagerie sparse-checkout set trs_so_arm100
 ```
 
-Set `HF_TOKEN` (Hugging Face) as an environment variable for TRELLIS. Never commit it.
+Set `HF_TOKEN` (Hugging Face) for TRELLIS and, for the automatic object lookup, `ANTHROPIC_API_KEY`, both as
+environment variables. Never commit them.
 
 ## Credits
 

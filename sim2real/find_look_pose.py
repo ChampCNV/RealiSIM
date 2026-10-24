@@ -1,22 +1,26 @@
-"""Find the arm pose from which the webcam sees the tag anywhere in the placement area (run once, then paste
-the result into tag_env.LOOK_POSE).
+"""Find the arm pose from which the wrist webcam sees the tag anywhere in the placement area.
 
-    python sim2real/find_look_pose.py
+    python sim2real/find_look_pose.py [object] [--wide]
 
-Random search over arm poses; score = share of placement-grid positions where the tag is detected
-(nominal camera, no noise), the gripper must stay well above the table, ties go to poses closer to zero.
+Random search over arm poses; score = share of placement-grid positions where the tag is detected (nominal
+camera, no noise); the gripper must stay well above the table; ties go to poses closer to zero.
+look_pose(object, area) caches the result in assets/<object>/look_pose.json (per area), so training and the
+robot use the same pose.
 """
+import argparse
+import json
+
 import mujoco
 import numpy as np
 
-from lift_env import start_pose
-from tag_env import TagLiftEnv
+from lift_env import ROOT, start_pose
+from tag_env import DEFAULT_AREA, LOOK_POSE, WIDE_AREA, TagLiftEnv
 
 
-def main(samples=12000, seed=0):
+def search(object_name, area, samples=12000, seed=0, verbose=True):
     rng = np.random.default_rng(seed)
-    zero = start_pose(TagLiftEnv("lego_tree", domain_randomization=False, start=[0] * 6).model, "zero")
-    env = TagLiftEnv("lego_tree", domain_randomization=False, start=zero)
+    zero = start_pose(TagLiftEnv(object_name, domain_randomization=False, start=[0] * 6).model, "zero")
+    env = TagLiftEnv(object_name, domain_randomization=False, start=zero, area=area)
     env.reset()
     m, d = env.model, env.data
     a = env.obj_qadr
@@ -38,13 +42,39 @@ def main(samples=12000, seed=0):
             if env.tcp()[2] < 0.12 or d.xpos[env.fixed_jaw][1] < -0.30:
                 seen = -1  # too low / too far out
                 break
-            seen += env.detect() is not None
+            seen += env.detect_wrist() is not None
         score = seen / len(grid)
         dist = np.abs(q[:5] - zero[:5]).sum()
         if score > best[0] or (score == best[0] and dist < best[1]):
             best = (score, dist, q)
-            print(f"sample {i}: tag seen from {100 * score:.0f}% of placements, distance from zero {dist:.2f} rad")
-    print("LOOK_POSE =", [round(float(v), 3) for v in best[2]])
+            if verbose:
+                print(f"   sample {i}: tag seen from {100 * score:.0f}% of placements")
+    return [round(float(v), 3) for v in best[2]], best[0]
+
+
+def look_pose(object_name="lego_tree", area=None, samples=12000):
+    """The look pose for this object and placement area (searched once, then read from the cache)."""
+    area = dict(area or DEFAULT_AREA)
+    if object_name == "lego_tree" and area == DEFAULT_AREA:
+        return list(LOOK_POSE)  # the pose the first models were trained with
+    cache = ROOT / "assets" / object_name / "look_pose.json"
+    data = json.loads(cache.read_text()) if cache.exists() else {}
+    key = json.dumps(area, sort_keys=True)
+    if key not in data:
+        print(f"finding a look pose for {object_name} (wrist camera must see the whole area)...")
+        pose, score = search(object_name, area, samples)
+        data[key] = dict(pose=pose, seen=score)
+        cache.write_text(json.dumps(data, indent=2))
+        print(f"   look pose {pose}: tag seen from {100 * score:.0f}% of the area")
+    return data[key]["pose"]
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("object", nargs="?", default="lego_tree")
+    ap.add_argument("--wide", action="store_true", help="the wide placement area")
+    args = ap.parse_args()
+    print("LOOK_POSE =", look_pose(args.object, WIDE_AREA if args.wide else None))
 
 
 if __name__ == "__main__":

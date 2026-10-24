@@ -16,11 +16,13 @@ the same whichever camera saw it; the wrist camera's detection is used when both
 placement is randomized widely: the policy only gets positions in the robot frame.
 Physics randomization (mass, friction, motor strength, object position) comes from LiftEnv.
 """
+import json
+
 import cv2
 import mujoco
 import numpy as np
 
-from lift_env import LiftEnv, look_at, front_face_y
+from lift_env import ARM_SCENE, LiftEnv, look_at, front_face_y
 
 TAG = dict(dictionary=cv2.aruco.DICT_APRILTAG_36h11, id=0, size=0.025, margin=0.002,
            centre_height=0.040)  # black square 25 mm, white margin 2 mm; centre 4 cm above the table
@@ -43,6 +45,22 @@ SCAN_TURNS = [(0.0, 0.0), (-0.45, 0.0), (0.45, 0.0), (0.0, 0.3), (0.0, -0.3), (-
 SCAN_FRAMES = 3
 
 
+# Distances people measure with a ruler start at the base's rotation axis, which sits PAN_AXIS_FRONT in front
+# of the robot model's origin (robot frame: x = robot's left as seen from behind it, -y = straight out, z up).
+_arm = mujoco.MjModel.from_xml_path(str(ARM_SCENE))
+PAN_AXIS_FRONT = float(-_arm.body("Rotation_Pitch").pos[1])  # 0.0452 m
+
+
+def ruler(p):
+    """Robot-frame point -> (front, side, height) in metres as measured from the rotation axis."""
+    return -p[1] - PAN_AXIS_FRONT, p[0], p[2]
+
+
+def from_ruler(front, side, height):
+    """(front, side, height) measured from the rotation axis (m) -> robot-frame point."""
+    return np.array([side, -(front + PAN_AXIS_FRONT), height])
+
+
 def vfov(hfov, width, height):
     return float(np.degrees(2 * np.arctan(np.tan(np.radians(hfov) / 2) * height / width)))
 
@@ -52,23 +70,63 @@ def intrinsics(fovy_deg, width, height):
     return np.array([[f, 0, width / 2], [0, f, height / 2], [0, 0, 1]])
 
 
-def tag_png(tag_id=TAG["id"]):
+def tag_png(tag_id=TAG["id"], back=False):
     from lift_env import ROOT
-    path = ROOT / "assets" / "apriltag" / f"tag36h11_{tag_id}.png"
+    path = ROOT / "assets" / "apriltag" / f"tag36h11_{tag_id}{'_back' if back else ''}.png"
     if not path.exists():
         px = 8 * 40  # 40 pixels per tag cell
         margin = round(px * TAG["margin"] / TAG["size"])
         tag = cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(TAG["dictionary"]), tag_id, px)
         card = cv2.copyMakeBorder(tag, margin, margin, margin, margin, cv2.BORDER_CONSTANT, value=255)
         path.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(path), card[:, ::-1])  # MuJoCo shows this box face mirrored left-right: pre-mirror
+        # MuJoCo shows the box's +y face mirrored left-right (pre-mirror it); the -y face comes out as is
+        cv2.imwrite(str(path), card if back else card[:, ::-1])
     return path
 
 
+# Placement area, measured from the base's rotation axis to the object: front from/to and +-side (m), and how
+# far the object may be turned from facing the robot (deg). DEFAULT_AREA is what the first models trained on.
+DEFAULT_AREA = dict(front_min=0.145, front_max=0.235, side=0.08, yaw_deg=30)
+WIDE_AREA = dict(front_min=0.12, front_max=0.28, side=0.15, yaw_deg=45)
+GRIPPER_OPEN_GAP = 0.086  # m between the jaw pads at the policy's "open" jaw angle (SO-100 model)
+MAX_MASS = 0.4  # kg the SO-100 lifts comfortably
+
+
+def object_setup(name):
+    """Size of an asset and where its tags go: tag centre height = objects.json "tag_height_m" if given, else
+    half the object's height (kept 2-5 cm so it is reachable and visible)."""
+    from lift_env import ROOT
+    props = json.loads((ROOT / "assets" / name / "properties.json").read_text())
+    objects = json.loads((ROOT / "objects.json").read_text()) if (ROOT / "objects.json").exists() else {}
+    length, width, height = props["size_m"]
+    tag_h = objects.get(name, {}).get("tag_height_m") or float(np.clip(0.5 * height, 0.02, 0.05))
+    return dict(size=(length, width, height), mass=props["mass_kg"], tag_height=tag_h)
+
+
+def object_tags(name):
+    """(front ID, back ID) glued on this object (objects.json -> tags, set when the asset was made); None = no
+    tag on that side. Objects without the entry use the defaults 0 (front) and 1 (back)."""
+    from lift_env import ROOT
+    path = ROOT / "objects.json"
+    tags = (json.loads(path.read_text()).get(name, {}) if path.exists() else {}).get("tags")
+    return (tags.get("front"), tags.get("back")) if tags else (TAG["id"], BACK_TAG_ID)
+
+
+def check_object(name):
+    """Can the SO-100 gripper hold it? Returns a list of problems (empty = fine)."""
+    o = object_setup(name)
+    problems = []
+    if min(o["size"][:2]) > 0.8 * GRIPPER_OPEN_GAP:
+        problems.append(f"narrowest side {min(o['size'][:2]) * 1000:.0f} mm is too wide for the gripper "
+                        f"(opens ~{GRIPPER_OPEN_GAP * 1000:.0f} mm)")
+    if o["mass"] > MAX_MASS:
+        problems.append(f"{o['mass'] * 1000:.0f} g is heavy for the SO-100 (comfortable up to {MAX_MASS * 1000:.0f} g)")
+    if o["size"][2] < 0.03:
+        problems.append("lower than 3 cm: no room for a 2.5 cm tag")
+    return problems
+
+
 class TagLiftEnv(LiftEnv):
-    # placement area: 19-28 cm in front of the base, +-8 cm sideways (where the look pose sees the tag)
-    spawn_center = np.array([0.0, -0.235])
-    spawn_half = np.array([0.08, 0.045])
     corner_noise_px = 0.7
     miss_prob = 0.08  # frames where the detector misses a visible tag (blur, glare)
     min_side_px = 18  # 36h11 needs roughly 2+ pixels per cell (8 cells across)
@@ -78,11 +136,18 @@ class TagLiftEnv(LiftEnv):
     env_calib_pos_noise, env_calib_rot_noise = 0.004, np.radians(0.3)
     env_fov_error = 0.3  # deg: lens error left after calibrating on the workspace
 
-    def __init__(self, object_name="lego_tree", seed=0, domain_randomization=True, start=None):
+    def __init__(self, object_name="lego_tree", seed=0, domain_randomization=True, start=None, area=None):
         self.cam_w, self.cam_h = WEBCAM["width"], WEBCAM["height"]
+        self.tag_height = object_setup(object_name)["tag_height"]
         super().__init__(object_name, seed=seed, domain_randomization=domain_randomization, camera="webcam",
                          start=list(start if start is not None else LOOK_POSE))
         self.face_robot = True  # the tag is glued on the side facing the robot
+        self.area = dict(area or DEFAULT_AREA)
+        a = self.area
+        near, far = from_ruler(a["front_min"], 0, 0), from_ruler(a["front_max"], 0, 0)
+        self.spawn_center = np.array([0.0, (near[1] + far[1]) / 2])
+        self.spawn_half = np.array([a["side"], abs(near[1] - far[1]) / 2])
+        self.face_yaw = np.radians(a["yaw_deg"])
         self.qpos_obs_noise = np.radians(1.0)  # servo encoders are precise; the image policy needed more
         m = self.model
         self.tag_geom = m.geom("tag").id
@@ -104,12 +169,14 @@ class TagLiftEnv(LiftEnv):
             name="webcam", pos=WEBCAM["pos"], fovy=vfov(WEBCAM["hfov"], WEBCAM["width"], WEBCAM["height"]),
             xyaxes=look_at(np.array(WEBCAM["pos"]), np.array(WEBCAM["target"]), up=(0, 0, 1)))
         half = TAG["size"] / 2 + TAG["margin"]
-        for geom, tag_id, side in (("tag", TAG["id"], 1), ("tag_back", BACK_TAG_ID, -1)):
-            obj.add_texture(name=geom, type=mujoco.mjtTexture.mjTEXTURE_2D, file=str(tag_png(tag_id)))
+        front_id, back_id = object_tags(name)  # textures only: the detection itself is simulated geometrically
+        front_id, back_id = (TAG["id"] if front_id is None else front_id), (BACK_TAG_ID if back_id is None else back_id)
+        for geom, tag_id, side in (("tag", front_id, 1), ("tag_back", back_id, -1)):
+            obj.add_texture(name=geom, type=mujoco.mjtTexture.mjTEXTURE_2D, file=str(tag_png(tag_id, side < 0)))
             mat = obj.add_material(name=geom)
             mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = geom
             obj.body(name).add_geom(name=geom, type=mujoco.mjtGeom.mjGEOM_BOX, size=[half, 0.0003, half],
-                                    pos=[0, front_face_y(obj, name, side) + side * 0.0004, TAG["centre_height"]],
+                                    pos=[0, front_face_y(obj, name, side) + side * 0.0004, self.tag_height],
                                     material=geom, contype=0, conaffinity=0, group=2, density=0)
         self.tag_depth = front_face_y(obj, name) - front_face_y(obj, name, -1) + 0.0008  # front to back tag
 

@@ -98,11 +98,21 @@ def inertia(mesh, mass_kg):
     return mesh.center_mass, full
 
 
-def export_textured(textured_mesh_path, transform, out_dir, name):
-    """Write the generator's textured mesh (UVs + colour image) with the given transform; returns the image file."""
+def export_textured(textured_mesh_path, transform, out_dir, name, keep_bounds=None):
+    """Write the generator's textured mesh (UVs + colour image) with the given transform; returns the image file.
+    keep_bounds: the cleaned object's bounding box; faces outside it (+5 %) are dropped, so a second object the
+    generator also modelled (e.g. a tape roll that was in the photos) does not stay in the visual mesh."""
     tex = trimesh.load(textured_mesh_path, force="mesh")
     tex.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))  # glTF Y-up -> Z-up
     tex.apply_transform(transform)
+    if keep_bounds is not None:
+        lo, hi = keep_bounds
+        margin = 0.05 * (hi - lo)
+        centres = tex.triangles_center
+        inside = np.all((centres >= lo - margin) & (centres <= hi + margin), axis=1)
+        if not inside.all():
+            tex.update_faces(inside)
+            tex.remove_unreferenced_vertices()
     image = tex.visual.material.to_simple().image  # PBR base colour as a plain image
     image_file = f"{name}_texture.png"
     image.convert("RGB").save(out_dir / image_file)
@@ -148,7 +158,7 @@ def mesh_to_mjcf(mesh_path, name, props, out_dir, textured_mesh_path=None):
 
     visual_file = f"{name}_visual.obj"
     if textured_mesh_path is not None:
-        visual_material = export_textured(textured_mesh_path, transform, out_dir, name)
+        visual_material = export_textured(textured_mesh_path, transform, out_dir, name, mesh.bounds)
     else:
         visual = simplified(mesh, VISUAL_FACES)
         trimesh.Trimesh(visual.vertices, visual.faces).export(out_dir / visual_file)

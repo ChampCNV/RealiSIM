@@ -4,31 +4,99 @@
     "height_m": 0.101,
     "mass_kg": 0.349,
     "material": "steel can with paper label",
-    "friction": [0.6, 0.005, 0.0001],
-    "rgba": [0.75, 0.15, 0.12, 1.0]
+    "friction": [
+      0.6,
+      0.005,
+      0.0001
+    ],
+    "rgba": [
+      0.75,
+      0.15,
+      0.12,
+      1.0
+    ]
   },
   "printed_frame": {
     "source": "Unbranded 3D-printed PLA sleeve; no online match. Size is a visual estimate, mass = PLA 1.24 g/cm3 x estimated wall volume, friction = hard plastic on dry wood",
-    "size_m": [0.045, 0.035, 0.025],
+    "size_m": [
+      0.045,
+      0.035,
+      0.025
+    ],
     "mass_kg": 0.012,
     "material": "PLA plastic (3D printed)",
-    "friction": [0.4, 0.005, 0.0001],
-    "rgba": [0.95, 0.95, 0.92, 1.0],
-    "rotate_deg": [90, 0, 0]
+    "friction": [
+      0.4,
+      0.005,
+      0.0001
+    ],
+    "rgba": [
+      0.95,
+      0.95,
+      0.92,
+      1.0
+    ],
+    "rotate_deg": [
+      90,
+      0,
+      0
+    ]
   },
   "lego_tree": {
     "source": "Custom LEGO build (TreeHacks), no online model. Size measured from photo 4 using the 1x4 tile (31.8 mm, LEGO standard) as a ruler: ~69 x 18 x 75 mm. Density 477 kg/m3 = 2x4 brick 2.3 g / 31.8x15.8x9.6 mm (hollow ABS). Friction: no measured ABS value found online; 0.4 (hard plastic), randomized in training",
-    "size_m": [0.069, 0.018, 0.075],
+    "size_m": [
+      0.069,
+      0.018,
+      0.075
+    ],
     "density_kg_m3": 477,
     "material": "LEGO ABS plastic",
-    "friction": [0.4, 0.005, 0.0001]
+    "friction": [
+      0.4,
+      0.005,
+      0.0001
+    ],
+    "tag_height_m": 0.04
   },
   "so101_motor_holder": {
     "source": "SO-ARM100 repo, STL/SO101/Individual/Motor_holder_SO101_Base.stl: 55.1 x 38.1 x 28.0 mm ring, 13.3 cm3 -> ~16 g PLA (1.24 g/cm3) if solid; friction = hard plastic on dry wood",
-    "size_m": [0.0551, 0.0381, 0.028],
+    "size_m": [
+      0.0551,
+      0.0381,
+      0.028
+    ],
     "mass_kg": 0.015,
     "material": "PLA plastic (3D printed)",
-    "friction": [0.4, 0.005, 0.0001],
-    "rgba": [0.95, 0.95, 0.92, 1.0]
+    "friction": [
+      0.4,
+      0.005,
+      0.0001
+    ],
+    "rgba": [
+      0.95,
+      0.95,
+      0.92,
+      1.0
+    ]
+  },
+  "celsius_can": {
+    "source": "Celsius Sparkling Grape Rush, 12 fl oz slim aluminium can (opened, treated as empty). Size: 12 oz slim can ~6.13 in tall x 2.25 in wide (brainbound.blog slim can guide; Ball 202 slim can 6.13 in flanged height) = 57 x 57 x 156 mm. Mass: empty 12 oz aluminium can ~13 g (typical; 0.368 kg if full, 355 ml). Friction: painted aluminium on cloth ~0.5",
+    "size_m": [
+      0.057,
+      0.057,
+      0.156
+    ],
+    "mass_kg": 0.013,
+    "material": "aluminium can (printed coating)",
+    "friction": [
+      0.5,
+      0.005,
+      0.0001
+    ],
+    "tags": {
+      "front": null,
+      "back": 2
+    },
+    "tag_height_m": 0.084
   }
 }

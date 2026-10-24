@@ -40,6 +40,8 @@ class SimMap:
         self.span_deg = dict(zip(JOINTS, np.degrees(model.jnt_range[:6, 1] - model.jnt_range[:6, 0])))
         data = json.loads(self.path.read_text()) if self.path.exists() else {}
         self.sign = np.array([data.get(m, {}).get("sign", 1) for m in JOINTS], float)
+        # extra per-joint shift (deg), e.g. so the sim's fully closed gripper is the real one's (gripper_check.py)
+        self.offset = np.array([data.get(m, {}).get("offset_deg", 0.0) for m in JOINTS], float)
         self.ready = self.path.exists()
         self.set_calibration(calibration)
 
@@ -52,11 +54,11 @@ class SimMap:
     def to_sim(self, real_deg):
         """dict of real joint degrees -> array of 6 sim joint angles (rad)."""
         d = np.array([real_deg[m] for m in JOINTS])
-        return self.middle + self.sign * np.radians(d - self.held)
+        return self.middle + self.sign * np.radians(d - self.held - self.offset)
 
     def to_real(self, sim_rad):
         """array of 6 sim joint angles (rad) -> dict of real joint degrees."""
-        d = self.sign * np.degrees(np.asarray(sim_rad) - self.middle) + self.held
+        d = self.sign * np.degrees(np.asarray(sim_rad) - self.middle) + self.held + self.offset
         return dict(zip(JOINTS, d))
 
     def flip(self, j):
@@ -64,6 +66,6 @@ class SimMap:
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps({m: dict(sim_joint=JOINTS[m], sign=int(s))
-                                         for m, s in zip(JOINTS, self.sign)}, indent=2))
+        self.path.write_text(json.dumps({m: dict(sim_joint=JOINTS[m], sign=int(s), offset_deg=round(float(o), 2))
+                                         for m, s, o in zip(JOINTS, self.sign, self.offset)}, indent=2))
         self.ready = True
