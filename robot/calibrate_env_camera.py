@@ -22,6 +22,9 @@ touch_calibrate() is also called by run_tag_policy.py when you press "c" between
 
 TRACK mode (--track): no calibration, the saved one is used to show live where the object is (its camera-side
 tag) and, with --hand, where the person's hand is (MediaPipe, hand_watch.py; --depth uses the RealSense depth).
+It also shows which way the object is turned (upright, tilted, lying on its back/front/side, upside down)
+and turns the sim object to match: stand the object upright and press "u" once, which measures how each visible
+tag is glued (objects.json tag_roll_deg; a turned tag would otherwise look like a turned object).
 The arm is optional there; --video / --camera replace the environment camera (without a calibration the camera is
 assumed at its planned spot, tag_env.ENV_CAMERA).
 
@@ -40,8 +43,8 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "sim2real"))
-from tag_env import (ENV_CAMERA, TAG, TagLiftEnv, back_to_front, from_ruler, intrinsics, object_tags,  # noqa: E402
-                     ruler, vfov)
+from tag_env import (ENV_CAMERA, TAG, TagLiftEnv, back_to_front, from_ruler, intrinsics, measured_roll,  # noqa: E402
+                     object_rotation, object_tags, orientation, ruler, save_tag_roll, tag_roll, vfov)
 
 from arm import SOArm  # noqa: E402
 from camera import Camera, RealSense, VideoFile, camera_indices  # noqa: E402
@@ -79,9 +82,11 @@ class BackTagFinder:
         self.tag_id = tag_id
         self.detector = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(TAG["dictionary"]),
                                                 cv2.aruco.DetectorParameters())
+        self.raw = {}  # every tag in the last frame: {id: corners as detected} (their order carries the rotation)
 
     def __call__(self, frame):
         corners, ids, _ = self.detector.detectMarkers(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+        self.raw = {int(i): c[0] for i, c in zip(ids.ravel(), corners)} if ids is not None else {}
         if ids is not None:
             cv2.aruco.drawDetectedMarkers(frame, corners, ids, (0, 255, 0))
             if self.tag_id in ids.ravel():
@@ -102,15 +107,20 @@ class SimView:
         self.viewer = mujoco.viewer.launch_passive(sim.model, sim.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CAMERA] = 1
 
-    def show(self, face=None, yaw=0.0, camera=None, hand=None):
+    def show(self, face=None, yaw=0.0, camera=None, hand=None, pose=None):
         """face: robot-side tag centre (robot frame); yaw: which way the object faces (0 = toward the robot);
-        camera: (position, OpenCV rotation) of the environment camera; hand: the person's 21 hand points."""
+        camera: (position, OpenCV rotation) of the environment camera; hand: the person's 21 hand points;
+        pose: (object origin, object rotation) instead of face/yaw, for an object that does not stand upright."""
         m, d, sim = self.sim.model, self.sim.data, self.sim
         if hand is not None and sim.hand is not None:
             sim.hand.set(d, sim.hand.fit(hand))
         if self.arm is not None:
             d.qpos[sim.qadr] = self.mapping.to_sim(self.arm.read_degrees())
-        if face is not None:
+        if pose is not None:
+            q = np.zeros(4)
+            mujoco.mju_mat2Quat(q, np.ascontiguousarray(pose[1]).ravel())
+            d.qpos[sim.obj_qadr:sim.obj_qadr + 7] = [*pose[0], *q]
+        elif face is not None:
             c, s_ = np.cos(yaw), np.sin(yaw)
             origin = np.asarray(face) - np.array([[c, -s_, 0], [s_, c, 0], [0, 0, 1]]) @ self.local
             d.qpos[sim.obj_qadr:sim.obj_qadr + 7] = [origin[0], origin[1], max(origin[2], 0.0),
@@ -245,21 +255,27 @@ def live_check(cam, cfg, object_name, view=None, watch=None):
     person's hand, with a HandWatcher], in the camera window and in the sim."""
     ec = cfg["env_camera"]
     calibrated = "pos" in ec
-    back_id = object_tags(object_name)[1]
+    front_id, back_id = object_tags(object_name)
     find = None
     if calibrated and back_id is not None:
         K = intrinsics(ec["fovy_used"], ec["width"], ec["height"])
-        depth = TagLiftEnv(object_name, domain_randomization=False).tag_depth
+        sim = TagLiftEnv(object_name, domain_randomization=False)
+        depth = sim.tag_depth
+        local = {"front": sim.model.geom_pos[sim.tag_geom].copy(),  # tag centres in the object's frame
+                 "back": sim.model.geom_pos[sim.back_tag_geom].copy()}
         obj, find = tag_obj_pts(cfg.get("tag_mm", TAG["size"] * 1000)), BackTagFinder(back_id)
     elif not calibrated:
         print("environment camera not calibrated: the object is not tracked (python photo2grasp.py calibrate)")
     camera = (np.array(ec["pos"]), np.array(ec["R"])) if calibrated else None
+    roll = tag_roll(object_name)
     print("CHECK: touch tag 0 again or put the object at a measured spot and compare. q quits." if find else
           "tracking: q in the camera window quits")
+    if find is not None:
+        print("orientation: stand the object upright and press u once (measures how its tags are glued)")
     while True:
         rgb = cam.read()
         frame = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        lines, face, yaw, hand = [], None, 0.0, None
+        lines, face, yaw, hand, pose, tags_now = [], None, 0.0, None, None, {}
         if find is not None:
             c = find(frame)
             lines.append(f"tag ID {back_id} not seen")
@@ -272,6 +288,24 @@ def live_check(cam, cfg, object_name, view=None, watch=None):
                     f, sd, h = ruler(face)
                     lines[-1] = (f"object face: front {f * 100:5.1f} cm  side {sd * 100:+5.1f} cm  "
                                  f"height {h * 100:4.1f} cm")
+            # orientation: from the tag's corners as detected (their order says how the tag is turned)
+            seen_at = {}
+            for side, tid in (("back", back_id), ("front", front_id)):
+                if tid is not None and tid in find.raw:
+                    ok, rv, tv = cv2.solvePnP(obj, find.raw[tid], K, None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+                    if ok:
+                        pos, R = camera
+                        tags_now[side], seen_at[side] = R @ cv2.Rodrigues(rv)[0], pos + R @ tv.ravel()
+            usable = [s for s in tags_now if roll[s] is not None]  # back first: the camera faces it
+            if usable:
+                side = usable[0]
+                R_obj = object_rotation(tags_now[side], side == "back", roll[side])
+                name, tilt = orientation(R_obj)
+                lines.append(f"orientation: {name} (tilt {tilt:.0f} deg, from the {side} tag)")
+                if name != "upright":  # the position above assumes a standing object
+                    pose = (seen_at[side] - R_obj @ local[side], R_obj)
+            elif tags_now:
+                lines.append("orientation: not set up yet (stand the object upright, press u)")
         if watch is not None:
             seen = watch(rgb, cam.depth() if hasattr(cam, "depth") else None)
             lines.append("hand not seen")
@@ -283,11 +317,20 @@ def live_check(cam, cfg, object_name, view=None, watch=None):
                     f, sd, h = ruler(top)
                     lines[-1] = f"palm: front {f * 100:5.1f} cm  side {sd * 100:+5.1f} cm  height {h * 100:4.1f} cm"
         if view is not None:
-            view.show(face=face, yaw=yaw, camera=camera, hand=hand)
+            view.show(face=face, yaw=yaw, camera=camera, hand=hand, pose=pose)
         for i, text in enumerate(lines):
             cv2.putText(frame, text, (14, 40 + 40 * i), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2, cv2.LINE_AA)
         cv2.imshow(WINDOW, cv2.resize(frame, (960, int(960 * frame.shape[0] / frame.shape[1]))))
-        if cv2.waitKey(1) & 0xFF == ord("q") or (view is not None and not view.running()):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("u"):
+            if not tags_now:
+                print("u: no tag of this object seen right now")
+            for side, R_tag in tags_now.items():  # the object stands upright now: how is each visible tag glued?
+                save_tag_roll(object_name, side, measured_roll(R_tag))
+                print(f"saved: {object_name}'s {side} tag is glued turned {measured_roll(R_tag):.0f} deg "
+                      f"(objects.json tag_roll_deg)")
+            roll = tag_roll(object_name)
+        if key == ord("q") or (view is not None and not view.running()):
             break
 
 

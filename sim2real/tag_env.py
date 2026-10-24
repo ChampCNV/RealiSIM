@@ -500,6 +500,63 @@ def back_to_front(pos, normal, depth):
     return pos - level * depth, -level
 
 
+# ── Which way the object is turned (one tag gives its full 3D rotation) ─────────────────────────────────
+# Tag axes as OpenCV reports them (tag_obj_pts): x right, y up, z out of the printed face, as seen by someone
+# facing the tag. A tag glued turned by roll degrees (counter-clockwise, seen facing it) is told apart from a
+# turned object only by knowing that roll: tag_roll() reads it from objects.json (set with "u" in tracking).
+
+def _rot_z(deg):
+    c, s = np.cos(np.radians(deg)), np.sin(np.radians(deg))
+    return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1.0]])
+
+
+def tag_roll(name):
+    """How the object's tags are glued: {"front": deg or None, "back": deg or None} (objects.json tag_roll_deg;
+    None = not measured yet: the orientation is unknown, a turned tag would look like a turned object)."""
+    from lift_env import ROOT
+    path = ROOT / "objects.json"
+    roll = (json.loads(path.read_text()).get(name, {}) if path.exists() else {}).get("tag_roll_deg") or {}
+    return {"front": roll.get("front"), "back": roll.get("back")}
+
+
+def save_tag_roll(name, side, deg):
+    """Store how a tag ("front"/"back") is glued, measured while the object stands upright."""
+    from lift_env import ROOT
+    path = ROOT / "objects.json"
+    objects = json.loads(path.read_text())
+    objects.setdefault(name, {}).setdefault("tag_roll_deg", {})[side] = round(float(deg), 1)
+    path.write_text(json.dumps(objects, indent=2))
+
+
+def object_rotation(R_tag, back=False, roll_deg=0.0):
+    """Object rotation (columns: object x, y, z in the robot frame) from a tag's rotation in the robot frame.
+    Front tag on the object's +y face, back tag on its -y face; the object's z is up when it stands."""
+    x, y, z = (np.asarray(R_tag) @ _rot_z(-roll_deg)).T  # the tag's axes as if glued straight
+    return np.stack([x, -z, y], 1) if back else np.stack([-x, z, y], 1)
+
+
+def measured_roll(R_tag):
+    """The glue roll (deg) of a tag on an object that stands upright now."""
+    up = np.asarray(R_tag).T @ [0, 0, 1.0]  # world up in the tag's axes
+    return float(np.degrees(np.arctan2(up[0], up[1])))
+
+
+def orientation(R_obj):
+    """(name, tilt deg): upright / tilted / lying (on which face) / upside down."""
+    R = np.asarray(R_obj)
+    tilt = float(np.degrees(np.arccos(np.clip(R[2, 2], -1, 1))))
+    if tilt < 20:
+        return "upright", tilt
+    if tilt < 60:
+        return "tilted", tilt
+    if tilt > 150:
+        return "upside down", tilt
+    # which face is down: the object axis pointing most downward (R[2, i] = how far axis i points up)
+    down = {"on its front (front tag face down)": -R[2, 1], "on its back (front tag face up)": R[2, 1],
+            "on its side": abs(R[2, 0])}
+    return "lying " + max(down, key=down.get), tilt
+
+
 def small_rotation(rng, sigma):
     """Random rotation about a random axis, angle ~ N(0, sigma)."""
     axis = rng.normal(size=3)

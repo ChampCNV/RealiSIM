@@ -39,7 +39,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "sim2real"))
 from place_on_hand import plan  # noqa: E402
 from tag_env import (MIN_CAMERA_CLEARANCE, OLD_POLICY_CLEARANCE, SAFE_REST, TAG, TagLiftEnv,  # noqa: E402
-                     back_to_front, intrinsics, object_tags, pose_clearance, ruler, safe_route, tag_state, vfov)
+                     back_to_front, intrinsics, object_rotation, object_tags, orientation, pose_clearance, ruler,
+                     safe_route, tag_roll, tag_state, vfov)
 from train_tag import Actor  # noqa: E402
 
 from arm import SOArm  # noqa: E402
@@ -66,6 +67,7 @@ class TagTracker:
         self.K = intrinsics(wrist_fovy, ck["webcam"]["width"], ck["webcam"]["height"])
         self.depth = self.env.tag_depth  # this object's thickness between its tags (from its asset)
         self.front_id, self.back_id = object_tags(ck.get("object", "lego_tree"))  # IDs glued on this object
+        self.roll = tag_roll(ck.get("object", "lego_tree"))  # how they are glued (for the object's orientation)
         self.tips = [self.env.model.geom(g).id for g in ("fixed_jaw_pad_1", "moving_jaw_pad_1")]
         self.detector = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(TAG["dictionary"]),
                                                 cv2.aruco.DetectorParameters())
@@ -94,28 +96,34 @@ class TagTracker:
         return (c, rvec, tvec) if ok else None
 
     def update(self, q_sim, wrist_bgr, env_bgr=None):
-        """Joint angles (sim radians) + frames -> dict(visible, source, wrist/env corners, drift). The wrist
-        camera's reading wins when both see a tag, as in training; drift = how far the two readings differ."""
+        """Joint angles (sim radians) + frames -> dict(visible, source, wrist/env corners, drift, orientation).
+        The wrist camera's reading wins when both see a tag, as in training; drift = how far the two readings
+        differ; orientation = (name, tilt deg) of the object, or None (no tag seen / glue roll not set up)."""
         e = self.env
         e.data.qpos[e.qadr] = q_sim
         mujoco.mj_kinematics(e.model, e.data)
-        wrist_det = env_det = wc = ec = None
+        wrist_det = env_det = wc = ec = turned = None
         found = self.find(wrist_bgr, self.front_id, self.K) \
             if wrist_bgr is not None and self.front_id is not None else None
         if found:
             wc, rvec, tvec = found
             npos, nR = e.nominal_camera()
             wrist_det = (npos + nR @ tvec.ravel(), nR @ cv2.Rodrigues(rvec)[0][:, 2])
+            if self.roll["front"] is not None:
+                turned = orientation(object_rotation(nR @ cv2.Rodrigues(rvec)[0], False, self.roll["front"]))
         if env_bgr is not None and self.env_cal and self.back_id is not None:
             found = self.find(env_bgr, self.back_id, self.K_env)
             if found:
                 ec, rvec, tvec = found
                 back = (self.env_pos + self.env_R @ tvec.ravel(), self.env_R @ cv2.Rodrigues(rvec)[0][:, 2])
+                if turned is None and self.roll["back"] is not None:
+                    turned = orientation(object_rotation(self.env_R @ cv2.Rodrigues(rvec)[0], True,
+                                                         self.roll["back"]))
                 env_det = back_to_front(*back, self.depth)
         detection = wrist_det or env_det
         drift = np.linalg.norm(wrist_det[0] - env_det[0]) if wrist_det and env_det else None
         return dict(visible=e.update_tag(detection), source="wrist" if wrist_det else "env" if env_det else "-",
-                    wrist_corners=wc, env_corners=ec, drift=drift)
+                    wrist_corners=wc, env_corners=ec, drift=drift, orientation=turned)
 
     def tip(self, q_sim):
         """Gripper tip (robot frame) for these joint angles."""
@@ -344,7 +352,10 @@ def main():
                     if not move(goal, min_seconds=1.5, optional=True):
                         continue  # this look direction would bring the camera too close to the arm
                 for _ in range(ck.get("scan_frames", 3)):
-                    tracker.update(mapping.to_sim(arm.read_degrees()), read_wrist()[0], read_env())
+                    scan = tracker.update(mapping.to_sim(arm.read_degrees()), read_wrist()[0], read_env())
+                    if scan["orientation"] and scan["orientation"][0] != "upright":
+                        print(f"warning: the object looks {scan['orientation'][0]} (tilt {scan['orientation'][1]:.0f}"
+                              f" deg): the model was trained on upright objects")
                     if tracker.env.seen:
                         break
                 if tracker.env.seen:
@@ -355,7 +366,7 @@ def main():
             target = mapping.to_sim(arm.read_degrees())
             log = csv.writer(open(log_dir / f"attempt_{ep + 1}.csv", "w", newline=""))
             log.writerow(["t"] + [f"q{i}" for i in range(6)] + [f"target{i}" for i in range(6)]
-                         + ["tag_x", "tag_y", "tag_z", "visible", "source", "drift_m", "safety_hold"]
+                         + ["tag_x", "tag_y", "tag_z", "visible", "source", "drift_m", "safety_hold", "orientation"]
                          + [f"action{i}" for i in range(6)])
             holds, t_start = 0, time.time()
             for _ in range(steps):
@@ -380,7 +391,8 @@ def main():
                     arm.write_degrees(mapping.to_real(target))
                 log.writerow([round(t0 - t_start, 3), *np.round(q, 4), *np.round(target, 4), *np.round(state[12:15], 4),
                               int(seen["visible"]), seen["source"],
-                              "" if seen["drift"] is None else round(seen["drift"], 4), int(hold), *np.round(action, 3)])
+                              "" if seen["drift"] is None else round(seen["drift"], 4), int(hold),
+                              seen["orientation"][0] if seen["orientation"] else "", *np.round(action, 3)])
                 # live view: detection + what the policy is told
                 if seen["wrist_corners"] is not None:
                     cv2.polylines(frame, [seen["wrist_corners"].astype(int)], True, (0, 255, 0), 3)
@@ -388,6 +400,8 @@ def main():
                 txt = [f"tag: front {f * 100:5.1f} cm  side {sd * 100:+5.1f} cm  height {h * 100:4.1f} cm  ({seen['source']})"
                        if state[-2] else "tag: not seen yet",
                        f"last seen {state[-1]:.1f} s ago   gripper action {action[5]:+.2f}"]
+                if seen["orientation"]:
+                    txt.append(f"object: {seen['orientation'][0]} (tilt {seen['orientation'][1]:.0f} deg)")
                 if len(drift) >= 8 and np.median(drift) > DRIFT_WARN:
                     txt.append(f"CAMERAS DISAGREE by {np.median(drift) * 100:.1f} cm: camera moved? press c next")
                 for i, t in enumerate(txt):
