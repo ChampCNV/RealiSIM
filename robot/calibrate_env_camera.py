@@ -120,6 +120,11 @@ class SimView:
             q = np.zeros(4)
             mujoco.mju_mat2Quat(q, np.ascontiguousarray(pose[1]).ravel())
             d.qpos[sim.obj_qadr:sim.obj_qadr + 7] = [*pose[0], *q]
+            mujoco.mj_kinematics(m, d)  # never below the table: the tag reading is ~1 cm off at times
+            signs = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)])
+            lowest = min((d.geom_xpos[g, 2] + d.geom_xmat[g].reshape(3, 3)[2] @ (m.geom_aabb[g, :3, None] + signs.T *
+                          m.geom_aabb[g, 3:, None])).min() for g in sim.obj_collision)
+            d.qpos[sim.obj_qadr + 2] -= min(lowest, 0.0)
         elif face is not None:
             c, s_ = np.cos(yaw), np.sin(yaw)
             origin = np.asarray(face) - np.array([[c, -s_, 0], [s_, c, 0], [0, 0, 1]]) @ self.local
@@ -296,14 +301,18 @@ def live_check(cam, cfg, object_name, view=None, watch=None):
                     if ok:
                         pos, R = camera
                         tags_now[side], seen_at[side] = R @ cv2.Rodrigues(rv)[0], pos + R @ tv.ravel()
+            for side in [s for s in tags_now if roll[s] is None]:  # first sight: assume it stands, tag glued square
+                save_tag_roll(object_name, side, 90 * round(measured_roll(tags_now[side]) / 90))
+                print(f"orientation set up from the {side} tag, assuming the object stands upright now "
+                      f"(press u while it stands to measure it exactly)")
+                roll = tag_roll(object_name)
             usable = [s for s in tags_now if roll[s] is not None]  # back first: the camera faces it
             if usable:
                 side = usable[0]
                 R_obj = object_rotation(tags_now[side], side == "back", roll[side])
                 name, tilt = orientation(R_obj)
                 lines.append(f"orientation: {name} (tilt {tilt:.0f} deg, from the {side} tag)")
-                if name != "upright":  # the position above assumes a standing object
-                    pose = (seen_at[side] - R_obj @ local[side], R_obj)
+                pose = (seen_at[side] - R_obj @ local[side], R_obj)  # the sim object follows every tilt and roll
             elif tags_now:
                 lines.append("orientation: not set up yet (stand the object upright, press u)")
         if watch is not None:
