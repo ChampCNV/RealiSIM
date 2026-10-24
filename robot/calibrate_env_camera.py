@@ -3,6 +3,8 @@
     python robot/calibrate_env_camera.py                     # TOUCH mode (no ruler): the arm measures
     python robot/calibrate_env_camera.py --ruler             # 4 spots measured with a ruler instead
     python robot/calibrate_env_camera.py --object celsius_can
+    python robot/calibrate_env_camera.py --object celsius_can --track --hand my_hand   # live: object + hand
+    python robot/calibrate_env_camera.py --track --hand my_hand --video hand.mp4       # no setup: a video
 
 TOUCH mode (torque off): put the object anywhere in the placement area (tag ID 0 facing the robot, object
 straight), close the gripper and touch its tip to the CENTRE of tag ID 0, press SPACE, keep still ~2 s. Do this
@@ -17,6 +19,11 @@ Saved to robot/config.json (env_camera + tag_mm). Afterwards it shows live where
 is. A MuJoCo window shows it all: the sim arm copies the real arm, the object sits under the gripper tip
 while you touch, and afterwards the camera is drawn at its measured spot with the object where it sees it.
 touch_calibrate() is also called by run_tag_policy.py when you press "c" between attempts.
+
+TRACK mode (--track): no calibration, the saved one is used to show live where the object is (its camera-side
+tag) and, with --hand, where the person's hand is (MediaPipe, hand_watch.py; --depth uses the RealSense depth).
+The arm is optional there; --video / --camera replace the environment camera (without a calibration the camera is
+assumed at its planned spot, tag_env.ENV_CAMERA).
 
 RULER mode: the object at 4 measured spots; "front" = from the base's rotation axis to the face of tag ID 0,
 "side" = + to the robot's left as seen from behind it.
@@ -37,7 +44,8 @@ from tag_env import (ENV_CAMERA, TAG, TagLiftEnv, back_to_front, from_ruler, int
                      ruler, vfov)
 
 from arm import SOArm  # noqa: E402
-from camera import Camera  # noqa: E402
+from camera import Camera, RealSense, VideoFile  # noqa: E402
+from hand_watch import HandWatcher, env_camera_pose  # noqa: E402
 from sim_map import SimMap  # noqa: E402
 
 CONFIG = Path(__file__).parent / "config.json"
@@ -89,13 +97,17 @@ class SimView:
     def __init__(self, sim, arm=None, mapping=None):
         self.sim, self.arm, self.mapping = sim, arm, mapping
         self.local = sim.model.geom_pos[sim.tag_geom].copy()  # robot-side tag centre in the object's frame
+        if sim.hand is not None:
+            sim.hand.park(sim.data)  # until it is seen
         self.viewer = mujoco.viewer.launch_passive(sim.model, sim.data)
         self.viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CAMERA] = 1
 
-    def show(self, face=None, yaw=0.0, camera=None):
+    def show(self, face=None, yaw=0.0, camera=None, hand=None):
         """face: robot-side tag centre (robot frame); yaw: which way the object faces (0 = toward the robot);
-        camera: (position, OpenCV rotation) of the environment camera."""
+        camera: (position, OpenCV rotation) of the environment camera; hand: the person's 21 hand points."""
         m, d, sim = self.sim.model, self.sim.data, self.sim
+        if hand is not None and sim.hand is not None:
+            sim.hand.set(d, sim.hand.fit(hand))
         if self.arm is not None:
             d.qpos[sim.qadr] = self.mapping.to_sim(self.arm.read_degrees())
         if face is not None:
@@ -228,32 +240,53 @@ def touch_calibrate(cam, arm, mapping, cfg, object_name="lego_tree", spots=4, fr
     return dict(pos=pos, R=R, tag_mm=tag_mm, err_mm=err_mm)
 
 
-def live_check(cam, cfg, object_name, view=None):
-    """Show where the calibrated camera thinks the object is (robot-side face, from the rotation axis), in the
-    camera window and in the sim (object + camera at the measured spot)."""
+def live_check(cam, cfg, object_name, view=None, watch=None):
+    """Show live where the calibrated camera sees the object (robot-side face, from the rotation axis) [and the
+    person's hand, with a HandWatcher], in the camera window and in the sim."""
     ec = cfg["env_camera"]
-    K = intrinsics(ec["fovy_used"], ec["width"], ec["height"])
-    pos, R = np.array(ec["pos"]), np.array(ec["R"])
-    depth = TagLiftEnv(object_name, domain_randomization=False).tag_depth
+    calibrated = "pos" in ec
     back_id = object_tags(object_name)[1]
-    obj, find = tag_obj_pts(cfg.get("tag_mm", TAG["size"] * 1000)), BackTagFinder(back_id)
-    print("CHECK: touch tag 0 again or put the object at a measured spot and compare. q quits.")
+    find = None
+    if calibrated and back_id is not None:
+        K = intrinsics(ec["fovy_used"], ec["width"], ec["height"])
+        depth = TagLiftEnv(object_name, domain_randomization=False).tag_depth
+        obj, find = tag_obj_pts(cfg.get("tag_mm", TAG["size"] * 1000)), BackTagFinder(back_id)
+    elif not calibrated:
+        print("environment camera not calibrated: the object is not tracked (python photo2grasp.py calibrate)")
+    camera = (np.array(ec["pos"]), np.array(ec["R"])) if calibrated else None
+    print("CHECK: touch tag 0 again or put the object at a measured spot and compare. q quits." if find else
+          "tracking: q in the camera window quits")
     while True:
-        frame = cv2.cvtColor(cam.read(), cv2.COLOR_RGB2BGR)
-        c = find(frame)
-        text = f"tag ID {back_id} not seen"
-        if c is not None:
-            ok, rv, tv = cv2.solvePnP(obj, c, K, None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
-            if ok:
-                face, normal = back_to_front(pos + R @ tv.ravel(), R @ cv2.Rodrigues(rv)[0][:, 2], depth)
-                f, sd, h = ruler(face)
-                text = f"object face: front {f * 100:5.1f} cm  side {sd * 100:+5.1f} cm  height {h * 100:4.1f} cm"
-                if view is not None:  # object turned so its robot-side face points along `normal`
-                    view.show(face=face, yaw=np.arctan2(-normal[0], normal[1]), camera=(pos, R))
-        elif view is not None:
-            view.show(camera=(pos, R))
-        cv2.putText(frame, text, (14, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2, cv2.LINE_AA)
-        cv2.imshow(WINDOW, cv2.resize(frame, (960, 540)))
+        rgb = cam.read()
+        frame = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        lines, face, yaw, hand = [], None, 0.0, None
+        if find is not None:
+            c = find(frame)
+            lines.append(f"tag ID {back_id} not seen")
+            if c is not None:
+                ok, rv, tv = cv2.solvePnP(obj, c, K, None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+                if ok:
+                    pos, R = camera
+                    face, normal = back_to_front(pos + R @ tv.ravel(), R @ cv2.Rodrigues(rv)[0][:, 2], depth)
+                    yaw = np.arctan2(-normal[0], normal[1])  # object turned so its robot-side face points along it
+                    f, sd, h = ruler(face)
+                    lines[-1] = (f"object face: front {f * 100:5.1f} cm  side {sd * 100:+5.1f} cm  "
+                                 f"height {h * 100:4.1f} cm")
+        if watch is not None:
+            seen = watch(rgb, cam.depth() if hasattr(cam, "depth") else None)
+            lines.append("hand not seen")
+            if seen is not None:
+                watch.draw(frame, seen)
+                hand = seen["points"]
+                if view is not None and view.sim.hand is not None:
+                    top, _ = view.sim.hand.palm_top(view.sim.hand.fit(hand))
+                    f, sd, h = ruler(top)
+                    lines[-1] = f"palm: front {f * 100:5.1f} cm  side {sd * 100:+5.1f} cm  height {h * 100:4.1f} cm"
+        if view is not None:
+            view.show(face=face, yaw=yaw, camera=camera, hand=hand)
+        for i, text in enumerate(lines):
+            cv2.putText(frame, text, (14, 40 + 40 * i), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.imshow(WINDOW, cv2.resize(frame, (960, int(960 * frame.shape[0] / frame.shape[1]))))
         if cv2.waitKey(1) & 0xFF == ord("q") or (view is not None and not view.running()):
             break
 
@@ -267,23 +300,47 @@ def main():
     ap.add_argument("--frames", type=int, default=15, help="frames averaged per spot")
     ap.add_argument("--track", action="store_true",
                     help="no calibration: track the object live with the saved calibration (sim follows it)")
+    ap.add_argument("--hand", help="track mode: also track this person's hand (hands/<name>)")
+    ap.add_argument("--depth", action="store_true", help="track mode: RealSense depth for the hand's distance")
+    ap.add_argument("--video", help="track mode: a recorded video instead of the environment camera")
+    ap.add_argument("--camera", type=int, help="track mode: this camera index instead of the environment camera")
     args = ap.parse_args()
     cfg = json.loads(CONFIG.read_text())
     ec = cfg["env_camera"]
     arm = mapping = None
     if not args.ruler:  # the arm is read (torque off) so the sim arm copies it
-        arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
-        mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
-        arm.connect()
-        arm.torque(False)
-    cam = Camera(ec["index"], ec["width"], ec["height"], ec.get("fixed_exposure"))
-    view = SimView(TagLiftEnv(args.object, domain_randomization=False), arm, mapping)
+        try:
+            arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
+            mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
+            arm.connect()
+            arm.torque(False)
+        except Exception as e:  # tracking works without the arm (the sim arm stays still)
+            if not args.track:
+                raise
+            print(f"arm not connected ({e}): the sim arm stays still")
+            arm = mapping = None
+    if args.video:
+        cam = VideoFile(args.video)
+    elif args.depth:
+        cam = RealSense(ec["width"], ec["height"])
+    else:
+        cam = Camera(ec["index"] if args.camera is None else args.camera, ec["width"], ec["height"],
+                     ec.get("fixed_exposure"))
+    view = SimView(TagLiftEnv(args.object, domain_randomization=False, hand=args.hand, hand_role="to"), arm, mapping)
     try:
         if args.track:
-            if "pos" not in ec:
+            if "pos" not in ec and not args.hand:
                 raise SystemExit("not calibrated yet: run without --track first")
-            print("tracking: move the object, the sim follows (q in the camera window quits)")
-            live_check(cam, cfg, args.object, view)
+            watch = None
+            if args.hand:
+                h, w = cam.read().shape[:2]
+                pos, R, K, calibrated = env_camera_pose(cfg, w, h)
+                if not calibrated:
+                    print("environment camera not calibrated: assuming it stands where tag_env.ENV_CAMERA plans it")
+                watch = HandWatcher(view.sim.hand_model, pos, R, K, getattr(cam, "depth_scale", 1.0))
+            print("tracking: move the object" + (" and your hand" if watch else "") + ", the sim follows "
+                  "(q in the camera window quits)")
+            live_check(cam, cfg, args.object, view, watch)
             return
         done = touch_calibrate(cam, arm, mapping, cfg, args.object, args.spots, args.frames,
                                SPOTS if args.ruler else None, args.height, view=view)

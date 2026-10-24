@@ -73,9 +73,10 @@ AprilTag lift policy, 2M training steps, 200 test attempts with random placement
 |---|---|---|
 | 1. Object | `python photo2grasp.py asset celsius_can inputs\can_1.mp4 inputs\can_2.mp4` | Any number of videos or photos. The best 4 frames are picked by fixed rules (sharp, whole object, different sides). Real size, mass and friction come from `objects.json`, or you are asked (optional `--claude`: Claude looks them up online through the Anthropic API). TRELLIS builds the mesh, then cleanup, real size, collision shapes and a MuJoCo asset, plus a drop test |
 | 2. Look | `python photo2grasp.py check celsius_can` (or `check --all`, `check a b`) | The object(s) next to the SO-100 at its zero pose, after a drop test. Several objects only in this viewer: calibration, tracking, training and running use one object at a time |
-| (any time) | `python photo2grasp.py list` | All objects with size, weight, tags and trained models |
-| (any time) | `python photo2grasp.py remove celsius_can [--models] [--purge]` | Takes an object out of the sim (asks you to type its name). Its mesh and properties are kept so `add` can bring it back; `--purge` deletes them, `--models` also its trained runs |
-| (any time) | `python photo2grasp.py add celsius_can [model file or asset folder]` | Adds back an object made before, by name (no video, no TRELLIS), or brings in a 3D model file (.obj .stl .ply .glb .gltf) or a ready asset folder |
+| (any time) | `python photo2grasp.py list` | All objects with size, weight, tags and trained models, and all hands |
+| (any time) | `python photo2grasp.py remove [asset] celsius_can [--models] [--purge]` | Takes an object out of the sim (asks you to type its name). Its mesh and properties are kept so `add` can bring it back; `--purge` deletes them, `--models` also its trained runs |
+| (any time) | `python photo2grasp.py add [asset] celsius_can [model file or asset folder]` | Adds back an object made before, by name (no video, no TRELLIS), or brings in a 3D model file (.obj .stl .ply .glb .gltf) or a ready asset folder |
+| (any time) | `python photo2grasp.py add hand my_hand [hand.json, folder or video]` / `remove hand my_hand [--purge]` | The same for hands (below) |
 | (once) Arm | `python photo2grasp.py robot` | LeRobot-style setup: USB port, motor IDs, joint limits and directions (sim shown), gripper alignment, camera check. Skips what is already done |
 | 3. Camera | `python photo2grasp.py calibrate celsius_can` | Touch tag 0 with the gripper tip at 4 spots: the arm measures, so no ruler. Finds the environment camera's position and the real printed tag size |
 | 4. Train | `python photo2grasp.py train celsius_can --area wide [--colab]` | Checks the gripper can hold the object, places the tags, finds a look pose, then trains (starting from the trained Lego-tree model). `--colab` packs everything for a free Colab T4 instead (no Google Drive) |
@@ -86,6 +87,27 @@ AprilTag lift policy, 2M training steps, 200 test attempts with random placement
 Placement areas (measured from the base's rotation axis to the object): `default` 14.5-23.5 cm in front and ±8 cm
 sideways; `wide` 12-28 cm and ±15 cm. Tags: AprilTag 36h11 from `outputs/apriltags/`, ID 0 facing the robot
 and ID 1 on the back. On round objects, glue them on a small flat card first.
+
+### With a person's hand
+
+A hand is not an object: no 3D model, no TRELLIS, no tags. MediaPipe (Google's float16 HandLandmarker, about
+30 ms per frame on a laptop CPU) finds the hand's 21 points; the sim gets a stick hand with that person's
+proportions (palm plate, finger bones, forearm), moved by code. Hands are personal measurements and stay out
+of git (`hands/sample_hand` is made from a stock photo, to try the commands).
+
+| Step | Command | What happens |
+|---|---|---|
+| Hand | `python photo2grasp.py hand my_hand inputs\hand.mp4` (or `--webcam 0`) | Film your open hand (fingers straight, palm or back toward the camera, turning it a bit). Asks for its length (wrist crease to middle fingertip). Saves `hands/my_hand/` with `landmarks.jpg` and `preview.png` |
+| Look | `python photo2grasp.py check celsius_can --hand my_hand` | The object dropped onto your palm (held flat, palm up), next to the arm |
+| Track | `python photo2grasp.py track celsius_can --hand my_hand [--depth]` | Live: the environment camera finds the object (tag) and your hand; both move in the sim. Without the RealSense depth the hand's distance comes from its known size. `--video file.mp4` or `--camera N` work without the setup (camera assumed at its planned spot) |
+| Train | `python photo2grasp.py train celsius_can --hand my_hand --colab` | Learn to take the object from your open palm: palm 23-29 cm in front, 5-12 cm above the table, tilted a little, fingers toward the robot, slowly wobbling; touching the hand is penalised. Colab files: `colab/celsius_can_from_my_hand_train.zip` / `.ipynb` |
+| Test / run | `python photo2grasp.py test <run>` / `run <run>` | As for any model: the hand comes from the checkpoint. Hold the object out on your palm |
+| Put on the hand | `python photo2grasp.py test <table model> --to-hand my_hand` / `run <table model> --to-hand my_hand` | After a pick-up from the table, the arm puts the object on your palm: scripted (inverse kinematics), no training. On the robot: hold your open hand out low (4-8 cm above the table), still; it is found by the environment camera, checked again before the arm lowers, and the object is let go 1.2 cm above the palm |
+
+Limits (measured in the sim): the SO-100 grasps from above and is small, so it can put an object on a palm
+only when the palm is low (about 4-8 cm above the table, 17-26 cm in front); a higher hand is refused with a
+message. Taking an object from a hand works up to about 12 cm palm height. Fingertips closer than ~10 cm to
+the base hit the robot's shoulder. Hold the hand still: the arm is slow (10 Hz control).
 
 Table scene from a video (separate tool):
 
@@ -105,11 +127,12 @@ Details for each robot step are in [robot/README.md](robot/README.md).
 |---|---|
 | `photo2grasp.py` | The whole pipeline, step by step (see above) |
 | `make_asset.py`, `make_scene.py` | Videos/photos → MuJoCo asset; drop test + viewer |
+| `make_hand.py`, `hands/` | Videos/photos of a hand → its proportions for the sim's stick hand |
 | `objects.json` | Real size, mass, friction (with sources) per object |
 | `pipeline/` | Frame picking from videos, Claude object lookup, TRELLIS client, background removal, mesh cleanup → MJCF |
 | `scene/` | Video → table scene in MuJoCo (COLMAP, table plane, objects) |
 | `assets/` | Generated MuJoCo objects (Lego tree, table, bottle, ...) |
-| `sim2real/` | `tag_env.py` (task + simulated AprilTag detection), `train_tag.py` (SAC), `view_tag_env.py` |
+| `sim2real/` | `tag_env.py` (task + simulated AprilTag detection), `train_tag.py` (SAC), `view_tag_env.py`, `hand_sim.py` (stick hand), `place_on_hand.py` (scripted placing) |
 | `robot/` | Real SO-100: motor setup, calibration, digital twin, policy runner |
 | `colab/` | Colab training without Google Drive (zip builder + cell) |
 | `runs/tag_colab_2m/` | Trained AprilTag policy + training log |

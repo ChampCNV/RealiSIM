@@ -65,3 +65,52 @@ def list_cameras(max_index=6):
             found.append(i)
         cap.release()
     return found
+
+
+class VideoFile:
+    """A recorded video played like a camera (loops), for trying tracking without the setup."""
+
+    def __init__(self, path):
+        self.cap = cv2.VideoCapture(str(path))
+        if not self.cap.isOpened():
+            raise ConnectionError(f"cannot open video {path}")
+
+    def read(self):
+        ok, frame = self.cap.read()
+        if not ok:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            ok, frame = self.cap.read()
+            if not ok:
+                raise IOError("video read failed")
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    def close(self):
+        self.cap.release()
+
+
+class RealSense:
+    """Intel RealSense colour + depth (aligned to the colour image) through pyrealsense2. read() is the colour
+    frame (RGB) like Camera; depth() the matching depth image (uint16, x depth_scale = metres)."""
+
+    def __init__(self, width=1280, height=720, fps=30):
+        import pyrealsense2 as rs
+        self.rs, self.pipe, cfg = rs, rs.pipeline(), rs.config()
+        cfg.enable_stream(rs.stream.color, width, height, rs.format.rgb8, fps)
+        cfg.enable_stream(rs.stream.depth, min(width, 1280), min(height, 720), rs.format.z16, fps)
+        profile = self.pipe.start(cfg)
+        self.depth_scale = profile.get_device().first_depth_sensor().get_depth_scale()
+        self.align = rs.align(rs.stream.color)
+        self._depth = None
+        for _ in range(15):  # let auto exposure settle
+            self.pipe.wait_for_frames()
+
+    def read(self):
+        frames = self.align.process(self.pipe.wait_for_frames())
+        self._depth = np.asanyarray(frames.get_depth_frame().get_data()).copy()
+        return np.asanyarray(frames.get_color_frame().get_data()).copy()
+
+    def depth(self):
+        return self._depth
+
+    def close(self):
+        self.pipe.stop()

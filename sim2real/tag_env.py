@@ -22,6 +22,7 @@ import cv2
 import mujoco
 import numpy as np
 
+from hand_sim import SimHand, add_hand, load_hand
 from lift_env import ARM_SCENE, LiftEnv, look_at, front_face_y
 
 TAG = dict(dictionary=cv2.aruco.DICT_APRILTAG_36h11, id=0, size=0.025, margin=0.002,
@@ -97,6 +98,11 @@ def tag_png(tag_id=TAG["id"], back=False):
 # far the object may be turned from facing the robot (deg). DEFAULT_AREA is what the first models trained on.
 DEFAULT_AREA = dict(front_min=0.145, front_max=0.235, side=0.08, yaw_deg=30)
 WIDE_AREA = dict(front_min=0.12, front_max=0.28, side=0.15, yaw_deg=45)
+# Taking the object from a person's open hand (palm up): where the palm centre is (front/side as above), the palm
+# surface's height above the table (m), palm tilt (deg), fingers within +-finger_deg of pointing at the robot, and
+# a slow wobble of the hand (m) while the robot reaches for it.
+HAND_AREA = dict(front_min=0.23, front_max=0.29, side=0.08, yaw_deg=30, height=[0.05, 0.12], tilt_deg=8,
+                 finger_deg=25, wobble=0.004)
 GRIPPER_OPEN_GAP = 0.086  # m between the jaw pads at the policy's "open" jaw angle (SO-100 model)
 MAX_MASS = 0.4  # kg the SO-100 lifts comfortably
 
@@ -145,9 +151,18 @@ class TagLiftEnv(LiftEnv):
     env_calib_pos_noise, env_calib_rot_noise = 0.004, np.radians(0.3)
     env_fov_error = 0.3  # deg: lens error left after calibrating on the workspace
 
-    def __init__(self, object_name="lego_tree", seed=0, domain_randomization=True, start=None, area=None):
+    def __init__(self, object_name="lego_tree", seed=0, domain_randomization=True, start=None, area=None, hand=None,
+                 hand_role="from"):
+        """hand: a person's hand (name in hands/, or the hand model itself) in the scene. hand_role "from": the
+        object stands on the open palm (task: take it from the hand; area defaults to HAND_AREA); "to": the object
+        starts on the table and the hand is held out (offer_hand) once it is picked up, to put it on the palm."""
         self.cam_w, self.cam_h = WEBCAM["width"], WEBCAM["height"]
         self.tag_height = object_setup(object_name)["tag_height"]
+        self.hand_model = (load_hand(hand) if isinstance(hand, str) else dict(hand)) if hand else None
+        self.hand_name = self.hand_model["name"] if hand else None
+        self.hand_role = hand_role if hand else None
+        if hand and hand_role == "from" and area is None:
+            area = HAND_AREA
         super().__init__(object_name, seed=seed, domain_randomization=domain_randomization, camera="webcam",
                          start=list(start if start is not None else LOOK_POSE))
         self.face_robot = True  # the tag is glued on the side facing the robot
@@ -171,8 +186,12 @@ class TagLiftEnv(LiftEnv):
         self.ray_groups = np.array([1, 1, 1, 1, 0, 0], np.uint8)
         self.env_cam = m.camera("envcam").id
         self.env_fovy_nominal = m.cam_fovy[self.env_cam]
+        self.hand = SimHand(m, self.hand_model) if self.hand_model else None
+        self.hand_points, self.wobble = None, np.zeros(3)
 
     def _extend(self, scene, obj, name):
+        if self.hand_model:
+            add_hand(scene, self.hand_model)
         scene.body("Fixed_Jaw").add_geom(name="webcam_probe", type=mujoco.mjtGeom.mjGEOM_SPHERE,
                                          size=[CAMERA_PROBE_RADIUS, 0, 0], pos=WEBCAM["pos"], contype=0,
                                          conaffinity=0, group=4, density=0)
@@ -195,6 +214,72 @@ class TagLiftEnv(LiftEnv):
         self.tag_depth = front_face_y(obj, name) - front_face_y(obj, name, -1) + 0.0008  # front to back tag
 
     # ── Episode ────────────────────────────────────────────────────────────
+    def _place_object(self, xy, yaw):
+        if self.hand is None:
+            return super()._place_object(xy, yaw)
+        r, a = self.rng, self.area
+        if self.hand_role == "from":
+            heading = np.arctan2(-xy[1], -xy[0]) + r.uniform(-1, 1) * np.radians(a["finger_deg"])
+            self.place_on_hand(xy, yaw - np.arctan2(xy[0], -xy[1]), r.uniform(*a["height"]), heading,
+                               r.uniform(-1, 1, 2) * np.radians(a["tilt_deg"]))
+            direction = r.normal(size=3)
+            self.wobble = direction / np.linalg.norm(direction) * a["wobble"]
+            self.wobble_phase, self.wobble_hz = r.uniform(0, 2 * np.pi), r.uniform(0.2, 0.5)
+        else:  # not held out yet: offer_hand() after the pick-up
+            self.hand.park(self.data)
+            self.hand_points = self.hand.points
+            super()._place_object(xy, yaw)
+
+    def offer_hand(self, tries=50):
+        """The person holds out the open hand, palm up, fingers toward the robot, somewhere the arm can put
+        the object (low, in front), not touching the arm or the object. Returns the palm's surface centre."""
+        r, m, d = self.rng, self.model, self.data
+        avoid = set(self.robot_geoms) | set(self.obj_geoms)
+        for _ in range(tries):
+            centre = from_ruler(r.uniform(0.17, 0.26), r.uniform(-0.15, 0.15), r.uniform(0.04, 0.08))
+            heading = np.arctan2(-centre[1], -centre[0]) + r.uniform(-1, 1) * np.radians(20)
+            self.hand_points = self.hand.palm_up(centre - [0, 0, self.hand.box_half[2]], heading)
+            self.hand.set(d, self.hand_points)
+            mujoco.mj_forward(m, d)
+            if not any((c.geom1 in avoid and c.geom2 in self.hand.geoms) or (c.geom2 in avoid and c.geom1 in
+                       self.hand.geoms) for c in d.contact[:d.ncon]):
+                return self.hand.palm_top()[0]
+        raise RuntimeError("no free spot for the hand")
+
+    def place_on_hand(self, xy, turn, height, heading, tilt=(0.0, 0.0)):
+        """Hand palm up with its palm centre at xy and its surface `height` above the table, fingers along
+        `heading`, tilted; the object standing on the palm centre, turned `turn` from facing the robot."""
+        h = self.hand
+        self.hand_points = h.palm_up([xy[0], xy[1], height - h.box_half[2]], heading, tilt)
+        h.set(self.data, self.hand_points)
+        top, normal = h.palm_top()
+        q, qz = np.zeros(4), np.zeros(4)
+        mujoco.mju_quatZ2Vec(q, normal)
+        face = np.arctan2(xy[0], -xy[1]) + turn  # facing the robot base, as on the table
+        mujoco.mju_mulQuat(qz, q, [np.cos(face / 2), 0, 0, np.sin(face / 2)])
+        self.data.qpos[self.obj_qadr:self.obj_qadr + 7] = [*(top + 0.002 * normal), *qz]
+        self.base_height = top[2]
+        self.wobble = np.zeros(3)
+
+    def step(self, action):
+        if self.hand is not None and self.wobble.any():  # the person's hand is never perfectly still
+            t = (self.steps + 1) * self.control_dt  # starts from where it was placed: no jump
+            w = 2 * np.pi * self.wobble_hz
+            self.hand.set(self.data, self.hand_points + self.wobble * (np.sin(w * t + self.wobble_phase) -
+                                                                       np.sin(self.wobble_phase)))
+        return super().step(action)
+
+    def _evaluate(self):
+        info = super()._evaluate()
+        info["touching_hand"] = False
+        if self.hand is not None:
+            hand, robot = set(self.hand.geoms), set(self.robot_geoms)
+            for c in self.data.contact[:self.data.ncon]:
+                if (c.geom1 in hand and c.geom2 in robot) or (c.geom2 in hand and c.geom1 in robot):
+                    info["touching_hand"] = True
+                    break
+        return info
+
     def target_ok(self, target):
         return pose_clearance(self.model, self.check_data, target) >= self.min_camera_clearance
 
@@ -248,7 +333,7 @@ class TagLiftEnv(LiftEnv):
         r = super()._reward(info)
         jaw = self.data.qpos[self.qadr[5]]
         closed = np.clip((1.0 - jaw) / 1.1, 0, 1)  # 0 = open (1.0 rad), 1 = closed (-0.1 rad)
-        return r - 0.3 * closed * (info["tcp_dist"] > 0.04)
+        return r - 0.3 * closed * (info["tcp_dist"] > 0.04) - 1.0 * info["touching_hand"]
 
     # ── Simulated tag detection ────────────────────────────────────────────
     def tag_corners_world(self, back=False):

@@ -131,7 +131,8 @@ class LiftEnv:
         self.obj_geoms = np.where(m.geom_bodyid == self.obj_body)[0]
         self.obj_collision = np.array([g for g in self.obj_geoms if m.geom_contype[g]])
         self.floor = m.geom("floor").id
-        self.robot_bodies = set(range(m.body("Base").id, m.nbody)) - {self.obj_body}
+        base = m.body("Base").id
+        self.robot_bodies = {b for b in range(m.nbody) if m.body_rootid[b] == base}  # the arm's own bodies
         self.robot_geoms = np.array([g for g in range(m.ngeom) if m.geom_bodyid[g] in self.robot_bodies])
         self.fixed_jaw_geoms = set(np.where(m.geom_bodyid == m.body("Fixed_Jaw").id)[0])
         self.moving_jaw_geoms = set(np.where(m.geom_bodyid == m.body("Moving_Jaw").id)[0])
@@ -236,7 +237,7 @@ class LiftEnv:
             yaw = np.arctan2(xy[0], -xy[1]) + self.rng.uniform(-1, 1) * getattr(self, "face_yaw", MARKER_YAW)
         else:
             yaw = self.rng.uniform(-np.pi, np.pi)
-        d.qpos[self.obj_qadr:self.obj_qadr + 7] = [xy[0], xy[1], 0.002, np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)]
+        self._place_object(xy, yaw)
         self.target = np.clip(q0, self.ctrl_low, self.ctrl_high)
         d.ctrl[:] = self.target
         mujoco.mj_forward(m, d)
@@ -244,6 +245,11 @@ class LiftEnv:
             mujoco.mj_step(m, d)
         self.steps = 0
         return self._obs()
+
+    def _place_object(self, xy, yaw):
+        """Object standing on the table at xy, turned by yaw; base_height = what it stands on."""
+        self.base_height = 0.0
+        self.data.qpos[self.obj_qadr:self.obj_qadr + 7] = [xy[0], xy[1], 0.002, np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)]
 
     def _randomize(self):
         m, r = self.model, self.rng
@@ -318,7 +324,7 @@ class LiftEnv:
 
     def _evaluate(self):
         grasped, touching_table = self._contacts()
-        height = self.data.xpos[self.obj_body][2]  # body origin = bottom of the object
+        height = self.data.xpos[self.obj_body][2] - self.base_height  # bottom of the object above where it stood
         dist_rest = np.linalg.norm(self.target[:5] - self.rest_qpos[:5])
         lifted = height > 0.01
         # Assets come out of the pipeline resting upright, so tilt = angle between object z and world z

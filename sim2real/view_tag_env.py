@@ -4,6 +4,10 @@
     python sim2real/view_tag_env.py runs/tag_.../actor_best.pt   # run a trained policy
     python sim2real/view_tag_env.py runs/tag_.../actor_last.pt --nominal   # cameras exactly at their planned
                                                                           # spots (to place the real ones)
+    python sim2real/view_tag_env.py --object celsius_can --hand my_hand   # the object on a person's palm
+    python sim2real/view_tag_env.py runs/tag_.../actor_last.pt --to-hand my_hand   # pick up, then put it on
+                                                                          # the hand (scripted, place_on_hand.py)
+A model trained to take the object from a hand shows that hand automatically.
 
 Camera window: wrist webcam (left) and environment webcam across the table (right), 1280x720 each, with the
 REAL OpenCV AprilTag detector run on them (green box = detected) and the policy's tag input.
@@ -19,6 +23,7 @@ import numpy as np
 import torch
 
 from lift_env import start_pose
+from place_on_hand import on_palm, plan, run_sim
 from tag_env import ENV_CAMERA, OLD_POLICY_CLEARANCE, TAG, TagLiftEnv, ruler
 
 
@@ -31,11 +36,18 @@ def main():
                     help="arm at its zero pose, object at the middle of the placement area facing the robot")
     ap.add_argument("--real-camera", action="store_true",
                     help="environment camera where the real one is calibrated (robot/config.json), shown alone")
+    ap.add_argument("--hand", help="no checkpoint: show the object standing on this person's palm (hands/<name>)")
+    ap.add_argument("--to-hand", help="after the pick-up, hold out this hand and put the object on it")
     args = ap.parse_args()
     ck = torch.load(args.checkpoint, map_location="cpu", weights_only=False) if args.checkpoint else None
+    hand, role = (ck.get("hand") if ck else None) or args.hand, "from"
+    if args.to_hand:
+        if ck and ck.get("hand"):
+            raise SystemExit("this model takes the object from a hand: --to-hand is for table pick-up models")
+        hand, role = args.to_hand, "to"
     env = TagLiftEnv(ck.get("object", "lego_tree") if ck else args.object, seed=int(time.time()),
                      start=ck["start"] if ck else None, area=ck.get("area") if ck else None,
-                     domain_randomization=not args.nominal)
+                     domain_randomization=not args.nominal, hand=hand, hand_role=role)
     if ck:
         env.min_camera_clearance = ck.get("min_camera_clearance", OLD_POLICY_CLEARANCE)  # the rule it was trained with
     if args.zero:  # the real robot's resting start: middle of every joint's range; object centred, facing it
@@ -77,7 +89,20 @@ def main():
             place_real_camera()
         return o
 
-    o, t, paused, info = reset(), 0, False, {"success": False}
+    o, t, paused, info, placed = reset(), 0, False, {"success": False}, ""
+
+    def put_on_hand(viewer):
+        """The person holds out the hand; the scripted placing, shown in the viewer."""
+        top = env.offer_hand()
+        try:
+            waypoints = plan(env, env.target.copy(), top, d.xpos[env.obj_body] - env.tcp(),
+                             d.xmat[env.obj_body].reshape(3, 3)[:, 2])
+        except ValueError as e:
+            return f"not placed: {e}"
+        run_sim(env, waypoints, on_step=lambda: (viewer.sync(), time.sleep(0.03)))
+        r = on_palm(env)
+        return "PLACED ON THE HAND" if r["ok"] else f"placing failed (object leaning {r['tilt_deg']:.0f} deg)"
+
     with mujoco.viewer.launch_passive(m, d) as viewer:
         viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CAMERA] = 1  # draw where the cameras are
         while viewer.is_running():
@@ -90,6 +115,10 @@ def main():
                     a = np.zeros(env.action_dim)  # hold the look pose
                 o, _, _, _, info = env.step(a)
                 t += 1
+                if args.to_hand and info["success"] and actor is not None:
+                    placed = put_on_hand(viewer)
+                    print(placed)
+                    t = env.max_steps  # attempt over
             viewer.sync()
             views, found = [], []
             for cam in ((env.env_cam,) if args.real_camera else (env.cam_id, env.env_cam)):
@@ -112,7 +141,8 @@ def main():
                      f"policy input: tag at front {f * 100:5.1f} cm, side {sd * 100:+5.1f} cm, "
                      f"height {h * 100:4.1f} cm" if s[-2] else "policy input: tag not seen yet",
                      f"visible now: {bool(s[-3])}   step {t}/{env.max_steps}"
-                     + ("   SUCCESS" if info["success"] else "") + ("   (no policy: holding pose)" if not actor else "")]
+                     + ("   SUCCESS" if info["success"] else "") + ("   (no policy: holding pose)" if not actor else "")
+                     + (f"   {placed}" if placed else "")]
             for i, line in enumerate(lines):
                 cv2.putText(img, line, (14, 36 + 34 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2, cv2.LINE_AA)
             size = (960, 540) if args.real_camera else (1600, 450)
@@ -123,7 +153,7 @@ def main():
             if key == ord(" "):
                 paused = not paused
             if key == ord("n"):
-                o, t, info = reset(), 0, {"success": False}
+                o, t, info, placed = reset(), 0, {"success": False}, ""
             time.sleep(max(0, env.control_dt - (time.time() - t0)))
     cv2.destroyAllWindows()
 

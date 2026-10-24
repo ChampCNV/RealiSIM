@@ -22,7 +22,8 @@ def evaluate(checkpoint, episodes=100, env_only=False, seed=2024):
     actor = Actor(ck["state_dim"], ck["action_dim"])
     actor.load_state_dict(ck["actor"])
     actor.eval()
-    env = TagLiftEnv(ck.get("object", "lego_tree"), seed=seed, start=ck["start"], area=ck.get("area"))
+    env = TagLiftEnv(ck.get("object", "lego_tree"), seed=seed, start=ck["start"], area=ck.get("area"),
+                     hand=ck.get("hand"))  # models trained to take it from a hand: with that hand
     env.min_camera_clearance = ck.get("min_camera_clearance", OLD_POLICY_CLEARANCE)  # the rule it was trained with
     if env_only:
         env.detect_wrist = lambda: None

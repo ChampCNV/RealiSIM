@@ -3,6 +3,7 @@
     python robot/run_tag_policy.py runs/tag_.../actor_last.pt --dry-run     # torque OFF: watch the numbers
     python robot/run_tag_policy.py runs/tag_.../actor_last.pt --speed 0.3   # real run, slow
     python robot/run_tag_policy.py runs/tag_.../actor_last.pt --env-only    # environment camera only
+    python robot/run_tag_policy.py runs/tag_.../actor_last.pt --to-hand my_hand   # then put it on your palm
 
 Every 0.1 s, exactly as in training (tag_env.py):
   camera frames -> AprilTag detector -> solvePnP (printed tag size + lens) -> tag position in the robot frame
@@ -16,6 +17,10 @@ and within reach, the wrist camera is kept away from the arm (every eased move f
 model: from zero first a little forward and up; policy targets that bring it too close are held, as in
 training), Ctrl+C folds the arm to SAFE_REST (camera turned away) and turns torque off. Every attempt is logged
 to runs/real_logs/.
+A model trained to take the object from a person's hand (train --hand) runs the same way: hold the object out on
+your open palm. --to-hand: after a pick-up, hold your open hand out (palm up, low: 4-8 cm above the table, in
+front of the robot, still); the environment camera finds it (MediaPipe) and the arm puts the object on the palm
+(scripted, sim2real/place_on_hand.py), checking the hand again before it lowers.
 """
 import argparse
 import collections
@@ -32,6 +37,7 @@ import torch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "sim2real"))
+from place_on_hand import plan  # noqa: E402
 from tag_env import (MIN_CAMERA_CLEARANCE, OLD_POLICY_CLEARANCE, SAFE_REST, TAG, TagLiftEnv,  # noqa: E402
                      back_to_front, intrinsics, object_tags, pose_clearance, ruler, safe_route, tag_state, vfov)
 from train_tag import Actor  # noqa: E402
@@ -39,6 +45,7 @@ from train_tag import Actor  # noqa: E402
 from arm import SOArm  # noqa: E402
 from calibrate_env_camera import CONFIG, touch_calibrate  # noqa: E402
 from camera import Camera, list_cameras  # noqa: E402
+from hand_watch import HandWatcher  # noqa: E402
 from sim_map import SimMap  # noqa: E402
 from sim_mirror import Mirror  # noqa: E402
 
@@ -49,10 +56,11 @@ MIN_TIP_HEIGHT, MAX_REACH = 0.005, 0.40  # m: gripper tip above the table, horiz
 class TagTracker:
     """Real-robot version of the simulated detection: same maths, same memory, same policy input."""
 
-    def __init__(self, ck, cfg, wrist_fovy):
+    def __init__(self, ck, cfg, wrist_fovy, to_hand=None):
         self.ck = ck
+        hand, role = (to_hand, "to") if to_hand else (ck.get("hand"), "from")
         self.env = TagLiftEnv(ck.get("object", "lego_tree"), domain_randomization=False, start=ck["start"],
-                              area=ck.get("area"))  # model for kinematics, same object + placement area
+                              area=ck.get("area"), hand=hand, hand_role=role)  # same object, area [and hand]
         self.env.calib_pos, self.env.calib_rot = np.zeros(3), np.eye(3)
         self.env.min_camera_clearance = ck.get("min_camera_clearance", OLD_POLICY_CLEARANCE)  # as in its training
         self.K = intrinsics(wrist_fovy, ck["webcam"]["width"], ck["webcam"]["height"])
@@ -109,6 +117,13 @@ class TagTracker:
         return dict(visible=e.update_tag(detection), source="wrist" if wrist_det else "env" if env_det else "-",
                     wrist_corners=wc, env_corners=ec, drift=drift)
 
+    def tip(self, q_sim):
+        """Gripper tip (robot frame) for these joint angles."""
+        e = self.env
+        e.check_data.qpos[e.qadr] = q_sim
+        mujoco.mj_kinematics(e.model, e.check_data)
+        return e.check_data.geom_xpos[e.tip_geoms].mean(0)
+
     def state(self, q_sim, target, visible):
         e = self.env
         return tag_state(q_sim, target, e.tag_est, visible, e.seen, e.age)
@@ -135,6 +150,7 @@ def main():
     p.add_argument("--episodes", type=int, default=20)
     p.add_argument("--env-only", action="store_true", help="use only the environment camera")
     p.add_argument("--move-speed", type=float, default=20.0, help="max joint speed for start/return moves, deg/s")
+    p.add_argument("--to-hand", help="after a pick-up, put the object on this person's open palm (hands/<name>)")
     args = p.parse_args()
 
     cfg = json.loads(CONFIG.read_text())
@@ -160,7 +176,11 @@ def main():
     ec = cfg.get("env_camera")
     env_cam = Camera(ec["index"], ec["width"], ec["height"], ec.get("fixed_exposure")) \
         if ec and "env_camera" in ck else None
-    tracker = TagTracker(ck, cfg, wrist_fovy)
+    if args.to_hand and ck.get("hand"):
+        sys.exit("this model takes the object from a hand: --to-hand is for table pick-up models")
+    tracker = TagTracker(ck, cfg, wrist_fovy, args.to_hand)
+    if args.to_hand and not (env_cam and tracker.env_cal):
+        sys.exit("--to-hand needs the calibrated environment camera (it finds the hand): photo2grasp.py calibrate")
     if env_cam and not tracker.env_cal:
         print("environment camera not calibrated yet: press 'c' before the first attempt")
     if args.env_only and not env_cam:
@@ -216,6 +236,68 @@ def main():
             print(f"   camera-safe route: {len(route)} moves")
         for point in route:
             mover.ease_to(point, min_seconds)
+        return True
+
+    watch = None
+    if args.to_hand:
+        size = read_env().shape
+        ec = cfg["env_camera"]
+        watch = HandWatcher(tracker.env.hand_model, ec["pos"], ec["R"], intrinsics(ec["fovy_used"], size[1], size[0]))
+
+    def find_palm(frames=15, still=0.015):
+        """Watch the hand for ~1.5 s: its palm surface centre (robot frame), or None (not seen / moving)."""
+        tops = []
+        for _ in range(frames):
+            seen = watch(cv2.cvtColor(read_env(), cv2.COLOR_BGR2RGB))
+            if seen is not None:
+                tops.append(tracker.env.hand.palm_top(tracker.env.hand.fit(seen["points"]))[0])
+        if len(tops) < frames // 2:
+            print(f"   hand seen in only {len(tops)}/{frames} frames: keep it fully in the environment camera's view")
+            return None
+        tops = np.array(tops)
+        if np.linalg.norm(tops.std(0)) > still:
+            print("   the hand is moving: hold it still")
+            return None
+        return np.median(tops, 0)
+
+    def put_on_hand(q_hold):
+        """Scripted placing on the person's palm; returns True when the object was let go on it."""
+        e = tracker.env
+        for _ in range(5):  # a fresh look at the held object (the last reading is from before the lift)
+            tracker.update(mapping.to_sim(arm.read_degrees()), read_wrist()[0], read_env())
+            if e.age == 0:
+                break
+        if e.age == 0:  # the held object's bottom centre, from its front tag: half its thickness
+            normal = np.array([e.tag_est[3], e.tag_est[4], 0.0])  # behind the tag, tag_height below it
+            bottom = e.tag_est[:3] - normal * e.tag_depth / 2 - [0, 0, e.tag_height]
+            offset = bottom - tracker.tip(q_hold)
+        else:  # not seen lately: the gripper holds it about at its tag's height
+            offset = np.array([0, 0, -e.tag_height])
+        while True:
+            answer = input("hold your OPEN hand out, palm up, low (4-8 cm above the table) in front of the robot, "
+                           "keep it still. ENTER = go | s = skip (keep holding the object): ").strip().lower()
+            if answer == "s":
+                return False
+            palm = find_palm()
+            if palm is None:
+                continue
+            f, sd, h = ruler(palm)
+            print(f"   palm at front {f * 100:.0f} cm, side {sd * 100:+.0f} cm, height {h * 100:.0f} cm")
+            try:
+                waypoints = plan(e, q_hold, palm, offset)
+            except ValueError as err:
+                print(f"   cannot place there: {err}. Hold the hand lower / closer to the middle.")
+                continue
+            break
+        for name, q in waypoints:
+            if name == "down":  # last look before lowering onto the hand
+                again = find_palm(frames=8)
+                if again is None or np.linalg.norm(again - palm) > 0.025:
+                    print("   the hand moved: not lowering. Going back up.")
+                    move(waypoints[0][1])
+                    return False
+            move(q, min_seconds=2.5)  # slow near the person
+        print("   object put on the hand")
         return True
 
     steps = int(ck["max_steps"] / min(1.0, args.speed))  # slower actions need more steps for the same motion
@@ -330,8 +412,10 @@ def main():
             if len(drift) >= 8 and np.median(drift) > DRIFT_WARN:
                 print(f"the two cameras disagree by {np.median(drift) * 100:.1f} cm: press 'c' to re-calibrate")
             if not args.dry_run:
-                print("attempt done, returning slowly to the look pose")
                 mover.current = target
+                if args.to_hand:
+                    put_on_hand(target.copy())
+                print("attempt done, returning slowly to the look pose")
                 move(start)
         print(f"logs: {log_dir}")
     except KeyboardInterrupt:

@@ -3,6 +3,8 @@
     python sim2real/train_tag.py --steps 600000
     python sim2real/train_tag.py --object celsius_can --area wide --init runs/tag_envcam_2250k   # new object,
                                                          # starting from a trained model (learns much faster)
+    python sim2real/train_tag.py --object celsius_can --hand my_hand --init runs/tag_envcam_2250k
+                                                         # take the object from a person's open hand
 
 Actor: policy input from tag_env.tag_state (joints, targets, tag estimate, seen flags).
 Critic: same + privileged sim state (asymmetric actor-critic, as in train_sac.py).
@@ -19,8 +21,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from find_look_pose import look_pose
-from tag_env import (BACK_TAG_ID, DEFAULT_AREA, ENV_CAMERA, SCAN_FRAMES, SCAN_TURNS, SETUP_VERSION, TAG, WEBCAM,
-                     WIDE_AREA, TagLiftEnv, check_object)
+from hand_sim import load_hand
+from tag_env import (BACK_TAG_ID, DEFAULT_AREA, ENV_CAMERA, HAND_AREA, SCAN_FRAMES, SCAN_TURNS, SETUP_VERSION, TAG,
+                     WEBCAM, WIDE_AREA, TagLiftEnv, check_object)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -115,23 +118,27 @@ def main():
                    help="placement area: default 14.5-23.5 cm x +-8 cm, wide 12-28 cm x +-15 cm (from the axis)")
     p.add_argument("--init", help="run dir (train_state.pt): start from its weights, e.g. for a new object")
     p.add_argument("--force", action="store_true", help="train even if the object looks hard to grasp")
+    p.add_argument("--hand", help="take the object from this person's open hand (hands/<name>), area HAND_AREA")
     args = p.parse_args()
     problems = check_object(args.object)
     if problems:
         print("object check: " + "; ".join(problems))
         if not args.force:
             raise SystemExit("not training (use --force to try anyway)")
-    area = WIDE_AREA if args.area == "wide" else DEFAULT_AREA
-    start = look_pose(args.object, area)
+    area = HAND_AREA if args.hand else WIDE_AREA if args.area == "wide" else DEFAULT_AREA
+    start = look_pose(args.object, area, hand=args.hand)
+    hand = load_hand(args.hand) if args.hand else None
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.set_num_threads(max(1, torch.get_num_threads()))
-    run_dir = Path(args.resume) if args.resume else Path(args.out) / f"tag_{args.object}_{time.strftime('%Y%m%d_%H%M%S')}"
+    task = f"{args.object}_from_{args.hand}" if args.hand else args.object
+    run_dir = Path(args.resume) if args.resume else Path(args.out) / f"tag_{task}_{time.strftime('%Y%m%d_%H%M%S')}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    envs = [TagLiftEnv(args.object, seed=args.seed + i, start=start, area=area) for i in range(args.num_envs)]
-    eval_env = TagLiftEnv(args.object, seed=10_000 + args.seed, start=start, area=area)
+    envs = [TagLiftEnv(args.object, seed=args.seed + i, start=start, area=area, hand=hand)
+            for i in range(args.num_envs)]
+    eval_env = TagLiftEnv(args.object, seed=10_000 + args.seed, start=start, area=area, hand=hand)
     e0 = envs[0]
     sd, pd, ad = e0.state_dim, e0.priv_dim, e0.action_dim
     actor = Actor(sd, ad).to(device)
@@ -156,7 +163,8 @@ def main():
                 webcam=WEBCAM, env_camera=ENV_CAMERA, back_tag_id=BACK_TAG_ID, tag_depth=float(e0.tag_depth),
                 tag={k: v for k, v in TAG.items() if k != "dictionary"}, tag_family="DICT_APRILTAG_36h11",
                 state_dim=sd, action_dim=ad, action_scale=e0.action_scale.tolist(), control_dt=e0.control_dt,
-                max_steps=e0.max_steps, min_camera_clearance=e0.min_camera_clearance)
+                max_steps=e0.max_steps, min_camera_clearance=e0.min_camera_clearance,
+                hand=hand, hand_role="from" if hand else None)  # the whole hand model: runs without hands/
 
     def save(path):
         torch.save(dict(actor=actor.state_dict(), **meta), path)

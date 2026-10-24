@@ -28,3 +28,7 @@ robot/calibration/
 
 # Generated textures (rebuilt automatically)
 assets/apriltag/
+
+# People's hands (made by make_hand.py): personal measurements, kept local; the sample (from a stock photo) is shared
+hands/*
+!hands/sample_hand/

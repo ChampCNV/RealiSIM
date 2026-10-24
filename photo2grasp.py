@@ -1,19 +1,24 @@
 """Photo2Grasp: one command for the whole pipeline, step by step.
 
     python photo2grasp.py asset celsius_can inputs/can_1.mp4 inputs/can_2.mp4   # 1. videos/photos -> sim object
-    python photo2grasp.py add masking_tape                                      #    a removed/previous object, by name
-    python photo2grasp.py add masking_tape D:/models/tape.glb                   #    an existing 3D model / asset folder
-    python photo2grasp.py list                                                  #    all objects (+ trained models)
-    python photo2grasp.py remove celsius_can [--models] [--purge]               #    take an object out of the sim
+    python photo2grasp.py hand my_hand inputs/hand.mp4  (or --webcam 0)         #    your hand -> sim hand
+    python photo2grasp.py add [asset] masking_tape [D:/models/tape.glb]         #    add an object back / import one
+    python photo2grasp.py add hand my_hand [hand.json | folder | video]         #    add a hand back / import one
+    python photo2grasp.py list                                                  #    objects + hands (+ trained models)
+    python photo2grasp.py remove [asset] celsius_can [--models] [--purge]       #    take an object out of the sim
+    python photo2grasp.py remove hand my_hand [--purge]                         #    take a hand out
     python photo2grasp.py check celsius_can [lego_tree ...] / check --all      # 2. drop test + viewer
+    python photo2grasp.py check celsius_can --hand my_hand                      #    the object on your palm
     python photo2grasp.py tags celsius_can [video]                              #    which tag IDs are on it
     python photo2grasp.py robot                                                 #    arm setup (only if needed)
     python photo2grasp.py calibrate celsius_can                                 # 3. environment camera (touch)
-    python photo2grasp.py track celsius_can                                     #    live: real object -> sim
+    python photo2grasp.py track celsius_can [--hand my_hand] [--depth]          #    live: real object (+ hand) -> sim
     python photo2grasp.py train celsius_can --area wide [--colab]               # 4. train (here or on Colab)
+    python photo2grasp.py train celsius_can --hand my_hand --colab              #    take it from your hand
     python photo2grasp.py import tag_run.zip                                    #    a run trained on Colab
-    python photo2grasp.py test runs/<run>/actor_last.pt                         # 5. sim test + preview
+    python photo2grasp.py test runs/<run>/actor_last.pt [--to-hand my_hand]     # 5. sim test + preview
     python photo2grasp.py run runs/<run>/actor_last.pt [--env-only] [--dry-run] # 6. real robot
+    python photo2grasp.py run runs/<run>/actor_last.pt --to-hand my_hand        #    then put it on your palm
 
 Each step can also be run on its own (the scripts it calls are listed in README.md). Robot setup is not a step
 of its own every time: "run" and "calibrate" check that the arm is set up and only then ask.
@@ -167,6 +172,77 @@ def add_existing(name, source):
         raise SystemExit(f"{src} is neither an asset folder nor a 3D model ({', '.join(sorted(MESH_TYPES))})")
 
 
+HANDS = ROOT / "hands"
+REMOVED_HANDS = ROOT / "outputs" / "hands"  # removed hands wait here for "add hand <name>"
+
+
+def list_hands(models):
+    names = sorted(p.parent.name for p in HANDS.glob("*/hand.json")) if HANDS.exists() else []
+    if not names:
+        print("\nno hands yet: python photo2grasp.py hand <name> <video of your open hand>")
+        return
+    print("\nhands:")
+    for name in names:
+        h = json.loads((HANDS / name / "hand.json").read_text())
+        runs = ", ".join(r.name for rs in models.values() for r in rs if f"_from_{name}_" in r.name) or "none"
+        print(f"{name}\n   {h['side']} hand, {h['length_m'] * 100:.1f} cm long, from {h['frames_used']} frames | "
+              f"trained to take objects from it: {runs}")
+
+
+def remove_hand(name, purge=False):
+    src = HANDS / name
+    if not src.exists():
+        print(f"no hand called '{name}' (python photo2grasp.py list shows the hands)")
+        return
+    print(f"this deletes the hand '{name}' (hands/{name})" + ("" if purge else f"; it is kept in outputs/hands/{name} "
+          f"so 'add hand {name}' brings it back (--purge deletes it for good)"))
+    print("   (models trained with it keep working: they carry their own copy of the hand)")
+    if input(f"type the name ({name}) to confirm: ").strip() != name:
+        print("not deleted")
+        return
+    if purge:
+        shutil.rmtree(src)
+    else:
+        dest = REMOVED_HANDS / name
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(dest))
+    print(f"hand '{name}' deleted")
+
+
+def add_hand(name, source=None):
+    """A removed hand back (by name), a hand.json / hand folder from elsewhere, or a new one from videos/photos."""
+    dest = HANDS / name
+    if dest.exists():
+        raise SystemExit(f"hands/{name} already exists (python photo2grasp.py remove hand {name} first)")
+    if source is None:
+        saved = REMOVED_HANDS / name
+        if not (saved / "hand.json").exists():
+            raise SystemExit(f"no removed hand '{name}' (removed hands: "
+                             f"{sorted(q.name for q in REMOVED_HANDS.glob('*')) if REMOVED_HANDS.exists() else []}); "
+                             f"make one: python photo2grasp.py hand {name} <video>")
+        shutil.move(str(saved), str(dest))
+        print(f"hand '{name}' added back")
+        return
+    src = Path(source).resolve()
+    hand_file = src / "hand.json" if src.is_dir() else src
+    if hand_file.suffix == ".json":
+        hand = json.loads(hand_file.read_text())
+        if "points" not in hand or len(hand["points"]) != 21:
+            raise SystemExit(f"{hand_file} is not a hand made by make_hand.py")
+        dest.mkdir(parents=True)
+        if src.is_dir():
+            for f in src.iterdir():
+                if f.is_file():
+                    shutil.copy2(f, dest / f.name)
+        hand["name"] = name
+        (dest / "hand.json").write_text(json.dumps(hand, indent=2))
+        print(f"hand '{name}' added from {src}")
+    else:  # videos / photos of the hand
+        call("make_hand.py", name, src)
+
+
 def list_objects():
     objects = json.loads((ROOT / "objects.json").read_text())
     models = trained_models()
@@ -182,6 +258,7 @@ def list_objects():
         runs = ", ".join(r.name for r in models.get(name, [])) or "none"
         print(f"{name}\n   size {size} cm | {props['mass_kg'] * 1000:.0f} g | tags: {tag_text}\n"
               f"   trained models: {runs}")
+    list_hands(models)
 
 
 def remove_object(name, with_models=False, purge=False):
@@ -225,38 +302,52 @@ def main():
     a = sub.add_parser("asset", help="videos/photos -> MuJoCo object")
     a.add_argument("name")
     a.add_argument("inputs", nargs="+")
-    ad = sub.add_parser("add", help="add an object made before (by name), or an asset folder / 3D model file")
-    ad.add_argument("name")
-    ad.add_argument("source", nargs="?",
-                    help="optional: asset folder (<x>.xml + properties.json) or model file (.obj .stl .ply .glb .gltf)")
-    sub.add_parser("list", help="all objects with size, weight, tags and trained models")
-    rm = sub.add_parser("remove", help="delete an object (asks to confirm)")
-    rm.add_argument("name")
+    hd = sub.add_parser("hand", help="videos/photos (or a webcam) of your open hand -> your hand in the sim")
+    hd.add_argument("name")
+    hd.add_argument("inputs", nargs="*")
+    hd.add_argument("--webcam", type=int, help="record from this camera instead")
+    hd.add_argument("--length", type=float, help="cm, wrist crease to middle fingertip (asked if not given)")
+    hd.add_argument("--side", choices=["left", "right"])
+    ad = sub.add_parser("add", help="add an object/hand made before (by name), or import one from a file/folder")
+    ad.add_argument("words", nargs="+", metavar="[asset|hand] name [source]",
+                    help="asset (default) or hand, the name, optional source: asset folder or model file (.obj .stl "
+                         ".ply .glb .gltf); for a hand a hand.json, a hand folder, or videos/photos")
+    sub.add_parser("list", help="all objects and hands, with trained models")
+    rm = sub.add_parser("remove", help="delete an object or a hand (asks to confirm)")
+    rm.add_argument("words", nargs="+", metavar="[asset|hand] name")
     rm.add_argument("--models", action="store_true", help="also delete its trained models in runs/")
-    rm.add_argument("--purge", action="store_true", help="also delete its saved mesh (then it cannot be added back)")
+    rm.add_argument("--purge", action="store_true",
+                    help="also delete its saved mesh / the saved hand (then it cannot be added back)")
     tg = sub.add_parser("tags", help="set which AprilTag IDs are on an object (from a video, or typed)")
     tg.add_argument("name")
     tg.add_argument("inputs", nargs="*", help="optional video/photo showing the tags")
     c = sub.add_parser("check", help="drop test + viewer with the SO-100 (one, several, or --all objects)")
     c.add_argument("names", nargs="*")
     c.add_argument("--all", action="store_true", help="every object in the sim")
+    c.add_argument("--hand", help="your hand, palm up, the object standing on it")
     r = sub.add_parser("robot", help="one-time arm setup (asks what to redo)")
     r.add_argument("--all", action="store_true", help="go through every step")
     k = sub.add_parser("calibrate", help="environment camera position (touch the tag with the gripper)")
     k.add_argument("name", nargs="?", default="lego_tree")
-    tr = sub.add_parser("track", help="live preview: move the real object, the sim object follows")
+    tr = sub.add_parser("track", help="live preview: move the real object (and your hand), the sim follows")
     tr.add_argument("name", nargs="?", default="lego_tree")
+    tr.add_argument("--hand", help="also track your hand (hands/<name>) with MediaPipe")
+    tr.add_argument("--depth", action="store_true", help="RealSense depth for the hand's distance")
+    tr.add_argument("--video", help="a recorded video instead of the environment camera (try without the setup)")
+    tr.add_argument("--camera", type=int, help="this camera index instead of the environment camera")
     t = sub.add_parser("train", help="train the pick-up policy in simulation")
     t.add_argument("name")
     t.add_argument("--area", choices=["default", "wide"], default="default")
     t.add_argument("--steps", type=int)
     t.add_argument("--from-scratch", action="store_true", help="do not start from the trained Lego tree model")
     t.add_argument("--colab", action="store_true", help="make the Colab zip instead of training here")
+    t.add_argument("--hand", help="train to take the object from this hand (hands/<name>), held out palm up")
     i = sub.add_parser("import", help="unpack a run downloaded from Colab into runs/")
     i.add_argument("zip")
     e = sub.add_parser("test", help="sim test (100 attempts) + preview")
     e.add_argument("checkpoint")
     e.add_argument("--no-view", action="store_true")
+    e.add_argument("--to-hand", help="preview: after the pick-up, put the object on this hand (scripted)")
     g = sub.add_parser("run", help="real robot")
     g.add_argument("checkpoint")
     g.add_argument("rest", nargs=argparse.REMAINDER, help="--env-only, --dry-run, --speed 0.3 ...")
@@ -267,35 +358,61 @@ def main():
         if ok:
             call("make_scene.py", args.name, "--no-view")
             print(f"next: python photo2grasp.py check {args.name}   (look at it)   or   train {args.name}")
+    elif args.step == "hand":
+        if not args.inputs and args.webcam is None:
+            raise SystemExit("give videos/photos of your open hand, or --webcam <camera index>")
+        extra = [*(["--webcam", args.webcam] if args.webcam is not None else []),
+                 *(["--length", args.length] if args.length else []), *(["--side", args.side] if args.side else [])]
+        if call("make_hand.py", args.name, *[Path(x).resolve() for x in args.inputs], *extra):
+            print(f"next: python photo2grasp.py check <object> --hand {args.name}")
     elif args.step == "add":
-        if args.source:
-            add_existing(args.name, args.source)
+        kind, rest = (args.words[0], args.words[1:]) if args.words[0] in ("asset", "hand") else ("asset", args.words)
+        if not 1 <= len(rest) <= 2:
+            raise SystemExit("add [asset|hand] <name> [source]")
+        name, source = rest[0], (rest[1] if len(rest) == 2 else None)
+        if kind == "hand":
+            add_hand(name, source)
+        elif source:
+            add_existing(name, source)
         else:
-            restore(args.name)
+            restore(name)
     elif args.step == "list":
         list_objects()
     elif args.step == "remove":
-        remove_object(args.name, args.models, args.purge)
+        kind, rest = (args.words[0], args.words[1:]) if args.words[0] in ("asset", "hand") else ("asset", args.words)
+        if len(rest) != 1:
+            raise SystemExit("remove [asset|hand] <name>")
+        if kind == "hand":
+            remove_hand(rest[0], args.purge)
+        else:
+            remove_object(rest[0], args.models, args.purge)
     elif args.step == "tags":
         sys.path.insert(0, str(ROOT / "pipeline"))
         from tag_ids import tag_setup
         tag_setup(args.name, [str(Path(p).resolve()) for p in args.inputs], ROOT / "objects.json")
     elif args.step == "check":
-        call("make_scene.py", *(["--all"] if args.all or not args.names else args.names))
+        if args.hand:
+            call("make_scene.py", *args.names, "--hand", args.hand)
+        else:
+            call("make_scene.py", *(["--all"] if args.all or not args.names else args.names))
     elif args.step == "robot":
         robot_setup(force=args.all)
     elif args.step == "calibrate":
         ensure_robot()
         call("robot/calibrate_env_camera.py", "--object", args.name)
     elif args.step == "track":
-        call("robot/calibrate_env_camera.py", "--object", args.name, "--track")
+        extra = [*(["--hand", args.hand] if args.hand else []), *(["--depth"] if args.depth else []),
+                 *(["--video", Path(args.video).resolve()] if args.video else []),
+                 *(["--camera", args.camera] if args.camera is not None else [])]
+        call("robot/calibrate_env_camera.py", "--object", args.name, "--track", *extra)
     elif args.step == "train":
         init = [] if args.from_scratch or not (BEST_MODEL / "train_state.pt").exists() else ["--init", BEST_MODEL]
-        extra = (["--steps", args.steps] if args.steps else [])
+        extra = (["--steps", args.steps] if args.steps else []) + (["--hand", args.hand] if args.hand else [])
         if args.colab:
             call("colab/build_zip.py", "--object", args.name, "--area", args.area, *init, *extra)
-            print(f"next: Colab (T4): open colab/{args.name}_train.ipynb or paste colab/colab_cell.py, upload "
-                  f"colab/{args.name}_train.zip")
+            task = f"{args.name}_from_{args.hand}" if args.hand else args.name
+            print(f"next: Colab (T4): open colab/{task}_train.ipynb or paste colab/colab_cell.py, upload "
+                  f"colab/{task}_train.zip")
         else:
             call("sim2real/train_tag.py", "--object", args.name, "--area", args.area, *init, *extra,
                  cwd=ROOT / "sim2real")
@@ -309,7 +426,8 @@ def main():
     elif args.step == "test":
         call("sim2real/evaluate_tag.py", Path(args.checkpoint).resolve(), cwd=ROOT / "sim2real")
         if not args.no_view:
-            call("sim2real/view_tag_env.py", Path(args.checkpoint).resolve(), cwd=ROOT / "sim2real")
+            call("sim2real/view_tag_env.py", Path(args.checkpoint).resolve(),
+                 *(["--to-hand", args.to_hand] if args.to_hand else []), cwd=ROOT / "sim2real")
     elif args.step == "run":
         ensure_robot()
         if not robot_status()["env_camera"]:
