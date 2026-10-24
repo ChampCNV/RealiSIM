@@ -38,6 +38,9 @@ from api.config import load_env
 ROOT = Path(__file__).resolve().parent
 load_env()  # so child scripts (make_asset, the scene API) see keys from the repo .env
 PY = sys.executable
+if (ROOT / ".venv").exists() and Path(sys.prefix).resolve() != (ROOT / ".venv").resolve():
+    print(f"note: running with {PY}, not the project's .venv (other MuJoCo/servo versions behave differently): "
+          f"use .venv\\Scripts\\python.exe photo2grasp.py ...")
 BEST_MODEL = ROOT / "runs" / "tag_envcam_2250k"  # starting point for new objects (trained on the Lego tree)
 
 

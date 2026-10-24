@@ -44,7 +44,7 @@ from tag_env import (ENV_CAMERA, TAG, TagLiftEnv, back_to_front, from_ruler, int
                      ruler, vfov)
 
 from arm import SOArm  # noqa: E402
-from camera import Camera, RealSense, VideoFile  # noqa: E402
+from camera import Camera, RealSense, VideoFile, camera_indices  # noqa: E402
 from hand_watch import HandWatcher, env_camera_pose  # noqa: E402
 from sim_map import SimMap  # noqa: E402
 
@@ -324,7 +324,7 @@ def main():
     elif args.depth:
         cam = RealSense(ec["width"], ec["height"])
     else:
-        cam = Camera(ec["index"] if args.camera is None else args.camera, ec["width"], ec["height"],
+        cam = Camera(camera_indices(cfg)[1] if args.camera is None else args.camera, ec["width"], ec["height"],
                      ec.get("fixed_exposure"))
     view = SimView(TagLiftEnv(args.object, domain_randomization=False, hand=args.hand, hand_role="to"), arm, mapping)
     try:

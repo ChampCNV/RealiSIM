@@ -44,7 +44,7 @@ from train_tag import Actor  # noqa: E402
 
 from arm import SOArm  # noqa: E402
 from calibrate_env_camera import CONFIG, touch_calibrate  # noqa: E402
-from camera import Camera, list_cameras  # noqa: E402
+from camera import Camera, camera_indices  # noqa: E402
 from hand_watch import HandWatcher  # noqa: E402
 from sim_map import SimMap  # noqa: E402
 from sim_mirror import Mirror  # noqa: E402
@@ -167,14 +167,10 @@ def main():
         sys.exit("The arm is not calibrated yet: python photo2grasp.py robot")
     cc, web = cfg["wrist_camera"], ck["webcam"]
     wrist_fovy = cc.get("vertical_fov_deg") or vfov(web["hfov"], web["width"], web["height"])
-    index = cc["index"]
-    found = list_cameras()
-    if index not in found and len(found) == 1:
-        print(f"warning: camera {index} not found, using the only camera available ({found[0]})")
-        index = found[0]
+    index, env_index = camera_indices(cfg)
     cam = Camera(index, web["width"], web["height"], cc.get("fixed_exposure"))
     ec = cfg.get("env_camera")
-    env_cam = Camera(ec["index"], ec["width"], ec["height"], ec.get("fixed_exposure")) \
+    env_cam = Camera(env_index, ec["width"], ec["height"], ec.get("fixed_exposure")) \
         if ec and "env_camera" in ck else None
     if args.to_hand and ck.get("hand"):
         sys.exit("this model takes the object from a hand: --to-hand is for table pick-up models")

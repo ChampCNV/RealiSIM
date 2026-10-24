@@ -79,6 +79,11 @@ class SOArm:
 
     # ── connection ─────────────────────────────────────────────────────────
     def connect(self):
+        from serial.tools import list_ports
+        ports = [p.device for p in list_ports.comports()]
+        if self.port not in ports and len(ports) == 1:  # Windows renumbers the board after re-plugging
+            print(f"{self.port} not found, using the only serial port {ports[0]} (robot/config.json \"port\")")
+            self.port = ports[0]
         self.port_h = scs.PortHandler(self.port)
         self.packet = scs.PacketHandler(0)  # STS series: little-endian protocol
         if not self.port_h.openPort() or not self.port_h.setBaudRate(self.baudrate):

@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "sim2real"))
 from tag_env import ENV_CAMERA, TAG, TagLiftEnv, object_tags, ruler  # noqa: E402
 
 from arm import SOArm  # noqa: E402
-from camera import Camera  # noqa: E402
+from camera import Camera, camera_indices  # noqa: E402
 from sim_map import SimMap  # noqa: E402
 
 TILE = (640, 360)
@@ -56,8 +56,9 @@ def main():
     args = ap.parse_args()
     cfg = json.loads((Path(__file__).parent / "config.json").read_text())
     wc, ec = cfg["wrist_camera"], cfg["env_camera"]
-    wrist = Camera(wc["index"], wc["width"], wc["height"], wc.get("fixed_exposure"))
-    envcam = Camera(ec["index"], ec["width"], ec["height"], ec.get("fixed_exposure"))
+    wrist_index, env_index = camera_indices(cfg)
+    wrist = Camera(wrist_index, wc["width"], wc["height"], wc.get("fixed_exposure"))
+    envcam = Camera(env_index, ec["width"], ec["height"], ec.get("fixed_exposure"))
 
     env = TagLiftEnv(args.object, domain_randomization=False)  # cameras + object at their planned spots
     front_id, back_id = object_tags(args.object)

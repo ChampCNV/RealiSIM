@@ -189,6 +189,9 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/google-deepmi
 git -C third_party/mujoco_menagerie sparse-checkout set trs_so_arm100
 ```
 
+Run everything with this `.venv` (`.venv\Scripts\python.exe photo2grasp.py ...`): another Python with a
+different MuJoCo version gives different simulation results (and may lack the servo library).
+
 Set these as environment variables, or in a `.env` file at the repo root (gitignored). Never commit them.
 
 - `HF_TOKEN` (Hugging Face) for TRELLIS. TRELLIS and the scene API read it from the environment or `.env`.
