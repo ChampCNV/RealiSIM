@@ -1,9 +1,10 @@
 {
   "tomato_soup_can": {
     "source": "YCB object set, 005_tomato_soup_can (66 mm dia x 101 mm, 349 g)",
-    "height_m": 0.101,
+    "size_m": [0.066, 0.066, 0.101],
     "mass_kg": 0.349,
     "material": "steel can with paper label",
+    "collision": "cylinder",
     "friction": [
       0.6,
       0.005,
@@ -15,6 +16,14 @@
       0.12,
       1.0
     ]
+  },
+  "celsius_grape_can": {
+    "source": "Celsius Sparkling Grape Rush, 12 oz Ball Sleek can (202/204 x 602 spec sheet: 57.37 mm body dia, 155.63 mm open height; lid seam adds ~1.5 mm -> 157 mm). Mass = 355 ml x 1.0 g/ml + ~13 g aluminium = 0.368 kg (estimate). Friction: painted aluminium on wood, no measured value found; 0.5, randomized in training",
+    "size_m": [0.0574, 0.0574, 0.157],
+    "mass_kg": 0.368,
+    "material": "aluminium can, filled",
+    "friction": [0.5, 0.005, 0.0001],
+    "collision": "cylinder"
   },
   "printed_frame": {
     "source": "Unbranded 3D-printed PLA sleeve; no online match. Size is a visual estimate, mass = PLA 1.24 g/cm3 x estimated wall volume, friction = hard plastic on dry wood",
@@ -120,6 +129,7 @@
     ],
     "mass_kg": 0.013,
     "material": "aluminium can (printed coating)",
+    "collision": "cylinder",
     "friction": [
       0.5,
       0.005,

@@ -3,48 +3,83 @@
 Takes 1 or more photos of the same object from any angles. Needs internet.
 Set the HF_TOKEN environment variable (free Hugging Face account) for more daily GPU time.
 """
+import json
 import os
 import shutil
 from pathlib import Path
 
+import httpx
 import numpy as np
 import trimesh
 from gradio_client import Client, handle_file
 
-from cutout import cut_out
+SPACE = "https://trellis-community-trellis.hf.space"  # the app itself: no Hub API lookup to rate-limit
+ROOT = Path(__file__).resolve().parents[1]
 
-SPACE = "trellis-community/TRELLIS"
+
+def hf_token():
+    """Token from the environment, or from the repo's .env (never committed)."""
+    token = os.environ.get("HF_TOKEN")
+    if token:
+        return token
+    env_file = ROOT / ".env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("HF_TOKEN="):
+                token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                os.environ["HF_TOKEN"] = token
+                return token
+    return None
+# Highest detail the Space accepts that still fits its 120 s GPU slot: more sampling steps give a cleaner
+# shape and texture, the lowest mesh_simplify keeps the most triangles, 2048 is the largest texture.
+QUALITY = dict(ss_sampling_steps=25, slat_sampling_steps=25, mesh_simplify=0.9, texture_size=2048)
+FALLBACK = dict(ss_sampling_steps=12, slat_sampling_steps=12, mesh_simplify=0.9, texture_size=2048)
+
+
+def generate(client, images, seed, quality):
+    return client.predict(
+        image=handle_file(images[0]),
+        multiimages=[{"image": handle_file(p), "caption": None} for p in images] if len(images) > 1 else [],
+        seed=seed,
+        ss_guidance_strength=7.5,
+        slat_guidance_strength=3.0,
+        multiimage_algo="stochastic",
+        api_name="/generate_and_extract_glb",
+        **quality,
+    )
 
 
 def trellis_mesh(image_paths, out_dir, seed=0, keep_boxes=None):
     """Returns the path of a Z-up mesh (.obj) built from one or more photos."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    # generous timeout: the 5 s default fails photo uploads on slow (e.g. event) networks
-    client = Client(SPACE, hf_token=os.environ.get("HF_TOKEN"), verbose=False, httpx_kwargs={"timeout": 120})
+    # Uploads to the Space often take longer than the client's default few seconds.
+    client = Client(SPACE, hf_token=hf_token(), verbose=False,
+                    httpx_kwargs={"timeout": httpx.Timeout(180.0, connect=30.0)})
     client.predict(api_name="/start_session")
 
     # Send our own cut-outs: the Space's background removal kept the table, which TRELLIS then modelled.
     # It keeps an existing transparent background and only crops/centers the object.
-    images = []
+    from cutout import cut_out
+
+    images, cutouts = [], []
     for i, p in enumerate(image_paths):
         cut_path = out_dir / f"cutout_{i}.png"
         cut_out(p, keep_boxes[i] if keep_boxes else None).save(cut_path)
+        cutouts.append(cut_path)
         images.append(client.predict(handle_file(str(cut_path)), api_name="/preprocess_image"))
-    _, glb_path, _ = client.predict(
-        image=handle_file(images[0]),
-        multiimages=[{"image": handle_file(p), "caption": None} for p in images] if len(images) > 1 else [],
-        seed=seed,
-        ss_guidance_strength=7.5,
-        ss_sampling_steps=12,
-        slat_guidance_strength=3.0,
-        slat_sampling_steps=12,
-        multiimage_algo="stochastic",
-        mesh_simplify=0.95,
-        texture_size=1024,
-        api_name="/generate_and_extract_glb",
-    )
-    shutil.copy(glb_path, out_dir / "trellis.glb")
+    try:
+        _, glb_path, _ = generate(client, images, seed, QUALITY)
+    except Exception as exc:  # the Space aborts jobs that overrun its GPU slot
+        print(f"   TRELLIS at full quality failed ({exc}); retrying with fewer sampling steps")
+        _, glb_path, _ = generate(client, images, seed, FALLBACK)
+    shutil.copy(glb_path, out_dir / "trellis_raw.glb")
+
+    from texture_projection import project_photos
+
+    report = project_photos(out_dir / "trellis_raw.glb", cutouts, out_dir / "trellis.glb")
+    (out_dir / "texture_views.json").write_text(json.dumps(report, indent=2))
 
     # glTF files are Y-up; MuJoCo is Z-up.
     mesh = trimesh.load(out_dir / "trellis.glb", force="mesh")

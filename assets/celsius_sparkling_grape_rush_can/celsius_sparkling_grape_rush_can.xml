@@ -1,0 +1,25 @@
+<mujoco model="celsius_sparkling_grape_rush_can">
+  <!-- Standard 12 fl oz (355 mL) sleek beverage can specifications (diameter 58 mm, height 157 mm); mass calculated from 355 mL beverage (~355 g) plus ~15 g aluminum tare weight; friction estimated for smooth aluminum on dry wood -->
+  <compiler meshdir="."/>
+  <default>
+    <default class="celsius_sparkling_grape_rush_can_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+    </default>
+    <default class="celsius_sparkling_grape_rush_can_collision">
+      <geom type="mesh" group="3" condim="4" friction="0.3 0.005 0.0001"/>
+    </default>
+  </default>
+  <asset>
+    <mesh name="celsius_sparkling_grape_rush_can_visual" file="celsius_sparkling_grape_rush_can_visual.obj"/>
+    <texture name="celsius_sparkling_grape_rush_can_texture" type="2d" file="celsius_sparkling_grape_rush_can_texture.png"/>
+    <material name="celsius_sparkling_grape_rush_can_material" texture="celsius_sparkling_grape_rush_can_texture"/>
+  </asset>
+  <worldbody>
+    <body name="celsius_sparkling_grape_rush_can">
+      <freejoint name="celsius_sparkling_grape_rush_can_joint"/>
+      <inertial pos="0 0 0.0785" mass="0.37" fullinertia="0.000837796 0.000837796 0.000155569 -3.14839e-21 2.51871e-20 -0"/>
+      <geom class="celsius_sparkling_grape_rush_can_visual" mesh="celsius_sparkling_grape_rush_can_visual" material="celsius_sparkling_grape_rush_can_material"/>
+      <geom class="celsius_sparkling_grape_rush_can_collision" type="cylinder" size="0.029 0.0785" pos="0 0 0.0785"/>
+    </body>
+  </worldbody>
+</mujoco>

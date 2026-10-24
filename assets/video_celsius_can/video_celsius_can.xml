@@ -1,0 +1,29 @@
+<mujoco model="video_celsius_can">
+  <!-- Cylinder at the Ball Sleek spec. The label is stitched from the video, one column per angle. -->
+  <compiler meshdir="."/>
+  <default>
+    <default class="video_celsius_can_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+    </default>
+    <default class="video_celsius_can_collision">
+      <geom group="3" condim="4" friction="0.5 0.005 0.0001"/>
+    </default>
+  </default>
+  <asset>
+    <mesh name="video_celsius_can_visual" file="video_celsius_can_visual.obj"/>
+    <mesh name="video_celsius_can_lid" file="video_celsius_can_lid.obj" inertia="shell"/>
+    <texture name="video_celsius_can_texture" type="2d" file="video_celsius_can_texture.png"/>
+    <texture name="video_celsius_can_lid_texture" type="2d" file="video_celsius_can_lid.png"/>
+    <material name="video_celsius_can_material" texture="video_celsius_can_texture" specular="0.3" shininess="0.4"/>
+    <material name="video_celsius_can_lid_material" texture="video_celsius_can_lid_texture" specular="0.6" shininess="0.8"/>
+  </asset>
+  <worldbody>
+    <body name="video_celsius_can">
+      <freejoint name="video_celsius_can_joint"/>
+      <inertial pos="-8.74319e-19 -7.63193e-19 0.0785" mass="0.368" fullinertia="0.000831197 0.000831197 0.000150588 -2.2623e-21 -1.56048e-20 -5.5072e-21"/>
+      <geom class="video_celsius_can_visual" mesh="video_celsius_can_visual" material="video_celsius_can_material"/>
+      <geom class="video_celsius_can_visual" mesh="video_celsius_can_lid" material="video_celsius_can_lid_material"/>
+      <geom class="video_celsius_can_collision" type="cylinder" size="0.0287 0.0785" pos="0 0 0.0785"/>
+    </body>
+  </worldbody>
+</mujoco>

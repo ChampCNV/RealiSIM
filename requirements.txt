@@ -18,3 +18,8 @@ pyserial==3.5
 anthropic==2.3.0  # Claude object lookup (pipeline/object_info.py)
 mediapipe==1.1.1  # hand landmarks (make_hand.py, hand tracking); its float16 model downloads on first use
 pyrealsense2==2.57.7.10387  # optional: RealSense depth for the hand (track --depth)
+open3d  # scene/find_objects.py
+fastapi  # api/: HTTP server
+uvicorn[standard]
+python-multipart
+google-genai  # api/: object identification and physics lookup (Gemini)

@@ -47,8 +47,13 @@ def main():
     ap.add_argument("--table", nargs=3, type=float, required=True, metavar=("LENGTH", "WIDTH", "HEIGHT"),
                     help="real table size in cm")
     args = ap.parse_args()
-    work = Path(args.work_dir)
-    L, W, H = (x / 100 for x in args.table)
+    find_objects(args.work_dir, args.table)
+
+
+def find_objects(work, table_cm):
+    """Writes work/scene.json from work/sparse; table_cm = real (length, width, height) in cm."""
+    work = Path(work)
+    L, W, H = (x / 100 for x in table_cm)
 
     rec = pycolmap.Reconstruction(str(work / "sparse"))
     pid = np.array(list(rec.points3D.keys()))
@@ -62,7 +67,9 @@ def main():
     up = -np.mean([im.cam_from_world().rotation.matrix()[1] for im in rec.images.values()], 0)
     up /= np.linalg.norm(up)
     best = None
-    for n, d, inl in planes(P, np.arange(len(P)), 0.008 * s):
+    # Walls and chair backs usually have more points than a plain tabletop, so keep extracting planes
+    # until a horizontal one shows up.
+    for n, d, inl in planes(P, np.arange(len(P)), 0.008 * s, n_planes=30):
         if np.mean(cams @ n + d) < 0:
             n, d = -n, -d
         # closer to "up" than to sideways; image-up is tilted by however much the phone looked down (~30-40 deg)
@@ -72,6 +79,8 @@ def main():
         dist = abs(target @ n + d)
         if best is None or dist < best[0]:
             best = (dist, n, d, inl)
+    if best is None:
+        raise RuntimeError("no horizontal table plane with the cameras above it; film the table from above")
     _, n, d, _ = best
     h = P @ n + d
 
@@ -146,6 +155,7 @@ def main():
         print(f"object_{i}: at ({p[0]*100:5.1f}, {p[1]*100:5.1f}) cm from table centre, height {height*100:4.1f} cm, "
               f"{len(idx)} points")
     (work / "scene.json").write_text(json.dumps(out))
+    return out
 
 
 if __name__ == "__main__":

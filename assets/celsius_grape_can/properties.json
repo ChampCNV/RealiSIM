@@ -1,0 +1,29 @@
+{
+  "source": "Celsius Sparkling Grape Rush, 12 oz Ball Sleek can (202/204 x 602 spec sheet: 57.37 mm body dia, 155.63 mm open height; lid seam adds ~1.5 mm -> 157 mm). Mass = 355 ml x 1.0 g/ml + ~13 g aluminium = 0.368 kg (estimate). Friction: painted aluminium on wood, no measured value found; 0.5, randomized in training",
+  "size_m": [
+    0.0574,
+    0.0574,
+    0.157
+  ],
+  "mass_kg": 0.368,
+  "material": "aluminium can, filled",
+  "friction": [
+    0.5,
+    0.005,
+    0.0001
+  ],
+  "collision": "cylinder",
+  "center_of_mass": [
+    0.0,
+    -0.0,
+    0.0785
+  ],
+  "collision_pieces": 1,
+  "collision_accuracy": {
+    "overshoot_mm_p95": 2.58,
+    "overshoot_mm_max": 6.54,
+    "undershoot_mm_p95": 1.28,
+    "undershoot_mm_max": 2.38,
+    "surface_within_1mm_pct": 95.5
+  }
+}

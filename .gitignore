@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .venv*/
+.env
 
 # Third-party repos (cloned in Setup, see README)
 third_party/

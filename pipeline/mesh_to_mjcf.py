@@ -5,9 +5,12 @@ from pathlib import Path
 import coacd
 import numpy as np
 import trimesh
+from scipy.spatial import ConvexHull, cKDTree
 
-VISUAL_FACES = 20000
-COLLISION_FACES = 3000  # CoACD gets slow on big meshes
+VISUAL_FACES = 50000
+COLLISION_FACES = 30000  # enough to keep rims and thin walls; CoACD time grows with face count
+COACD_THRESHOLD = 0.02  # max concavity left in a piece (fraction of object size); 0.05 rounded off edges
+ERROR_SAMPLES = 200_000  # surface points for the collision accuracy check (~0.5 mm spacing on a can)
 
 
 def clean(mesh):
@@ -77,15 +80,74 @@ def scale_and_center(mesh, props):
     return mesh
 
 
-def decompose(mesh, out_dir, name):
+def decompose(mesh, out_dir, name, threshold, max_hulls):
     """Split into convex pieces for collision (MuJoCo treats every mesh as convex)."""
-    parts = coacd.run_coacd(coacd.Mesh(mesh.vertices, mesh.faces), threshold=0.05, max_convex_hull=16)
-    files = []
+    for old in out_dir.glob(f"{name}_collision_*.obj"):
+        old.unlink()
+    parts = coacd.run_coacd(coacd.Mesh(mesh.vertices, mesh.faces), threshold=threshold,
+                            max_convex_hull=max_hulls, preprocess_resolution=100, resolution=4000,
+                            mcts_iterations=250, mcts_max_depth=4, max_ch_vertex=256)
+    files, pieces = [], []
     for i, (verts, faces) in enumerate(parts):
         f = f"{name}_collision_{i}.obj"
-        trimesh.Trimesh(verts, faces).export(out_dir / f)
+        piece = trimesh.Trimesh(verts, faces)
+        piece.export(out_dir / f)
         files.append(f)
-    return files
+        pieces.append(piece)
+    return files, pieces
+
+
+def primitive(kind, extents):
+    """Exact collision shape from the measured size: (MJCF geom attributes, the same shape as a mesh)."""
+    lx, ly, h = extents
+    if kind == "cylinder":
+        r = (lx + ly) / 4
+        shape = trimesh.creation.cylinder(radius=r, height=h, sections=256)
+        attrs = f'type="cylinder" size="{r:.6g} {h / 2:.6g}"'
+    elif kind == "box":
+        shape = trimesh.creation.box([lx, ly, h])
+        attrs = f'type="box" size="{lx / 2:.6g} {ly / 2:.6g} {h / 2:.6g}"'
+    else:
+        raise ValueError(f"unknown collision shape '{kind}' (use cylinder, box or mesh)")
+    shape.apply_translation([0, 0, h / 2])
+    return f'{attrs} pos="0 0 {h / 2:.6g}"', shape
+
+
+def inside_any(points, hulls, tol):
+    inside = np.zeros(len(points), bool)
+    for eq in hulls:
+        inside |= np.all(points @ eq[:, :3].T + eq[:, 3] <= tol, axis=1)
+    return inside
+
+
+def collision_error(mesh, pieces):
+    """How far the collision surface strays from the object surface, in mm.
+
+    overshoot: collision surface outside the object (fingers stop early, object looks fatter);
+    undershoot: object surface no collision piece covers (fingers sink in, contacts are missed).
+    """
+    surf, face = trimesh.sample.sample_surface(mesh, ERROR_SAMPLES, seed=0)
+    normals = mesh.face_normals[face]
+    tree = cKDTree(surf)
+    hulls = [ConvexHull(p.vertices).equations for p in pieces]
+    tol = 1e-5
+    area = sum(p.area for p in pieces)
+    out = []
+    for i, piece in enumerate(pieces):
+        pts, _ = trimesh.sample.sample_surface(piece, max(200, int(ERROR_SAMPLES * piece.area / area)), seed=0)
+        others = hulls[:i] + hulls[i + 1:]
+        pts = pts[~inside_any(pts, others, -tol)]  # faces buried inside another piece don't touch anything
+        dist, j = tree.query(pts)
+        outside = ((pts - surf[j]) * normals[j]).sum(1) > 0
+        out.append(np.where(outside, dist, 0.0))
+    over = np.concatenate(out)
+    uncovered = surf[~inside_any(surf, hulls, tol)]
+    boundary = np.concatenate([trimesh.sample.sample_surface(p, 20000, seed=0)[0] for p in pieces])
+    under = cKDTree(boundary).query(uncovered)[0] if len(uncovered) else np.zeros(1)
+    mm = lambda a, q: round(float(np.percentile(a, q)) * 1000, 2)  # noqa: E731
+    return {"overshoot_mm_p95": mm(over, 95), "overshoot_mm_max": mm(over, 100),
+            "undershoot_mm_p95": mm(under, 95), "undershoot_mm_max": mm(under, 100),
+            "surface_within_1mm_pct": round(100 * (1 - (under > 0.001).sum() / len(surf)), 1)}
 
 
 def inertia(mesh, mass_kg):
@@ -149,12 +211,30 @@ def mesh_to_mjcf(mesh_path, name, props, out_dir, textured_mesh_path=None):
     transform = np.eye(4)
     transform[:3, :] = np.linalg.lstsq(np.c_[start, np.ones(len(start))], mesh.vertices, rcond=None)[0].T
 
+    # Cans, bottles and boxes: one primitive at the measured size is the exact contact surface, where any
+    # decomposition of the generated mesh would copy its wobble. Everything else: convex pieces.
+    kind = props.get("collision", "mesh")
+    if kind == "mesh":
+        collision_files, pieces = decompose(simplified(mesh, COLLISION_FACES), out_dir, name,
+                                            props.get("coacd_threshold", COACD_THRESHOLD),
+                                            props.get("max_convex_hulls", -1))
+        body_shape = mesh
+    else:
+        for old in out_dir.glob(f"{name}_collision_*.obj"):
+            old.unlink()
+        collision_files = []
+        primitive_attrs, shape = primitive(kind, mesh.extents)  # extents == size_m once scaled
+        pieces = [shape]
+        body_shape = shape
+    accuracy = collision_error(mesh, pieces)
+
     mass = props.get("mass_kg")
     if mass is None and props.get("static"):
         mass = 0.0  # fixed in place, mass never used
     elif mass is None:  # mass from size: density (e.g. from a material lookup) x volume
-        mass = props["density_kg_m3"] * (mesh.volume if mesh.is_watertight else mesh.convex_hull.volume)
-    com, full_inertia = inertia(mesh, mass)  # on the full-resolution, watertight mesh
+        mass = props["density_kg_m3"] * (body_shape.volume if body_shape.is_watertight
+                                         else body_shape.convex_hull.volume)
+    com, full_inertia = inertia(body_shape, mass)  # on the full-resolution, watertight shape
 
     visual_file = f"{name}_visual.obj"
     if textured_mesh_path is not None:
@@ -163,7 +243,6 @@ def mesh_to_mjcf(mesh_path, name, props, out_dir, textured_mesh_path=None):
         visual = simplified(mesh, VISUAL_FACES)
         trimesh.Trimesh(visual.vertices, visual.faces).export(out_dir / visual_file)
         visual_material = None
-    collision_files = decompose(simplified(mesh, COLLISION_FACES), out_dir, name)
 
     meshes = [f'    <mesh name="{name}_visual" file="{visual_file}"/>']
     meshes += [f'    <mesh name="{Path(f).stem}" file="{f}"/>' for f in collision_files]
@@ -174,6 +253,8 @@ def mesh_to_mjcf(mesh_path, name, props, out_dir, textured_mesh_path=None):
     else:
         geoms = [f'      <geom class="{name}_visual" mesh="{name}_visual" rgba="{fmt(props.get("rgba", [0.7, 0.7, 0.7, 1]))}"/>']
     geoms += [f'      <geom class="{name}_collision" mesh="{Path(f).stem}"/>' for f in collision_files]
+    if kind != "mesh":
+        geoms += [f'      <geom class="{name}_collision" {primitive_attrs}/>']
     nl = "\n"
     if props.get("static"):  # furniture: fixed in place, no joint
         body_dynamics = ""
@@ -208,6 +289,6 @@ def mesh_to_mjcf(mesh_path, name, props, out_dir, textured_mesh_path=None):
 
     summary = {**props, "size_m": mesh.extents.round(4).tolist(), "mass_kg": round(float(mass), 5),
                "center_of_mass": com.round(4).tolist(),
-               "collision_pieces": len(collision_files)}
+               "collision": kind, "collision_pieces": len(pieces), "collision_accuracy": accuracy}
     (out_dir / "properties.json").write_text(json.dumps(summary, indent=2))
     return xml_path

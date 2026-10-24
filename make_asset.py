@@ -18,10 +18,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "pipeline"))
 
+from api.config import load_env  # noqa: E402
+
+load_env()  # ANTHROPIC_API_KEY and HF_TOKEN from the repo .env, when the shell has not set them
+
 from mesh_to_mjcf import mesh_to_mjcf  # noqa: E402
 from object_info import object_properties  # noqa: E402
+from preview import save_preview  # noqa: E402
 from tag_ids import tag_setup  # noqa: E402
-from trellis_mesh import trellis_mesh  # noqa: E402
 from video_frames import is_video, pick_frames  # noqa: E402
 
 
@@ -54,20 +58,24 @@ def main():
     if args.skip_mesh:
         raw_mesh = work_dir / "raw_mesh.obj"
     else:
-        print(f"[3/4] {len(images)} photo(s) -> 3D mesh (TRELLIS on Hugging Face)")
+        from trellis_mesh import trellis_mesh  # needs the Hugging Face client and rembg
+
+        print(f"[3/4] {len(images)} photo(s) -> 3D mesh (TRELLIS on Hugging Face), texture from the photos")
         raw_mesh = trellis_mesh([str(p) for p in images], work_dir, keep_boxes=boxes)
-        for cut in work_dir.glob("cutout_*.png"):  # only needed for the upload
+        for cut in work_dir.glob("cutout_*.png"):  # projection already used these
             cut.unlink()
 
     print("[4/4] mesh -> MuJoCo asset")
     textured = work_dir / "trellis.glb"  # TRELLIS also gives colours; keep them when available
     xml_path = mesh_to_mjcf(raw_mesh, args.name, props, ROOT / "assets" / args.name,
                             textured_mesh_path=textured if textured.exists() else None)
-    print("[5/5] AprilTags on the object")
+    print("AprilTags on the object")
     if args.inputs or "tags" not in json.loads((ROOT / "objects.json").read_text()).get(args.name, {}):
         tag_setup(args.name, args.inputs, ROOT / "objects.json")
     print(f"Done: {xml_path}")
     print((xml_path.parent / "properties.json").read_text())
+
+    print(f"Preview (visual | collision): {save_preview(xml_path, args.name)}")
 
 
 if __name__ == "__main__":

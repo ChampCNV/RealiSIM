@@ -1,0 +1,29 @@
+{
+  "source": "Standard 12 fl oz (355 mL) sleek beverage can specifications (diameter 58 mm, height 157 mm); mass calculated from 355 mL beverage (~355 g) plus ~15 g aluminum tare weight; friction estimated for smooth aluminum on dry wood",
+  "size_m": [
+    0.058,
+    0.058,
+    0.157
+  ],
+  "mass_kg": 0.37,
+  "material": "coated aluminum can filled with carbonated liquid",
+  "friction": [
+    0.3,
+    0.005,
+    0.0001
+  ],
+  "collision": "cylinder",
+  "center_of_mass": [
+    0.0,
+    0.0,
+    0.0785
+  ],
+  "collision_pieces": 1,
+  "collision_accuracy": {
+    "overshoot_mm_p95": 9.0,
+    "overshoot_mm_max": 12.95,
+    "undershoot_mm_p95": 1.6,
+    "undershoot_mm_max": 2.43,
+    "surface_within_1mm_pct": 95.8
+  }
+}

@@ -96,25 +96,35 @@ def build(work, mount=None):
     return spec.compile()
 
 
-def main():
-    work = sys.argv[1]
+def render(work):
+    """Settles the scene and saves work/scene_view_{1,2,3}.png. Returns the images and where each object rests."""
+    import cv2
+
     model = build(work)
     data, free, _ = settle(model)
+    model.vis.global_.offwidth, model.vis.global_.offheight = 1280, 720
+    r = mujoco.Renderer(model, 720, 1280)
+    images = []
+    for i, (az, el, dist) in enumerate([(135, -25, 1.0), (90, -40, 0.75), (180, -15, 1.4)]):
+        cam = mujoco.MjvCamera()
+        cam.lookat[:] = [0, 0, 0.7]
+        cam.distance, cam.azimuth, cam.elevation = dist, az, el
+        r.update_scene(data, cam)
+        images.append(Path(work) / f"scene_view_{i + 1}.png")
+        cv2.imwrite(str(images[-1]), cv2.cvtColor(r.render(), cv2.COLOR_RGB2BGR))
+    rest = {model.body(b).name: data.xpos[b].tolist() for b in free}
+    for name, pos in rest.items():
+        print(f"{name}: resting at {np.round(np.array(pos) * 100, 1)} cm")
+    return images, rest
 
+
+def main():
+    work = sys.argv[1]
     if "--render" in sys.argv:
-        import cv2
-        model.vis.global_.offwidth, model.vis.global_.offheight = 1280, 720
-        r = mujoco.Renderer(model, 720, 1280)
-        out = Path(work)
-        for i, (az, el, dist) in enumerate([(135, -25, 1.0), (90, -40, 0.75), (180, -15, 1.4)]):
-            cam = mujoco.MjvCamera()
-            cam.lookat[:] = [0, 0, 0.7]
-            cam.distance, cam.azimuth, cam.elevation = dist, az, el
-            r.update_scene(data, cam)
-            cv2.imwrite(str(out / f"scene_view_{i + 1}.png"), cv2.cvtColor(r.render(), cv2.COLOR_RGB2BGR))
-        for b in free:
-            print(f"{model.body(b).name}: resting at {np.round(data.xpos[b] * 100, 1)} cm")
+        render(work)
     else:
+        model = build(work)
+        data, _, _ = settle(model)
         mujoco.viewer.launch(model, data)
 
 
