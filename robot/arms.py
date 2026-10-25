@@ -45,6 +45,8 @@ def use(cfg, name):
     port = boards().get(arm["serial"])
     cfg.update(active_arm=name, serial=arm["serial"], calibration=arm["calibration"], sim_mapping=arm["sim_mapping"],
                arm_model=arm["model"])
+    if arm.get("env_camera"):  # the camera as calibrated with this arm (its own robot frame)
+        cfg["env_camera"] = dict(cfg.get("env_camera", {}), **arm["env_camera"])
     if port:
         cfg["port"] = port
     save(cfg)

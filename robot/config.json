@@ -1,8 +1,8 @@
 {
   "port": "COM15",
   "baudrate": 1000000,
-  "calibration": "robot/calibration/left_follower.json",
-  "sim_mapping": "robot/calibration/left_sim_mapping.json",
+  "calibration": "robot/calibration/so100_follower.json",
+  "sim_mapping": "robot/calibration/sim_mapping.json",
   "wrist_camera": {
     "index": 1,
     "width": 1280,
@@ -23,25 +23,25 @@
     "vertical_fov_deg": 42.0,
     "note": "RealSense D435 colour stream (69 x 42 deg field of view)",
     "pos": [
-      -0.0642,
-      -0.5802,
-      0.1621
+      -0.069,
+      -0.5951,
+      0.1493
     ],
     "R": [
       [
-        0.9938,
-        0.04401,
-        0.10212
+        0.99677,
+        -0.05503,
+        0.05847
       ],
       [
-        -0.07888,
-        -0.36835,
-        0.92634
+        -0.077,
+        -0.44888,
+        0.89027
       ],
       [
-        0.07838,
-        -0.92865,
-        -0.36259
+        -0.02274,
+        -0.89189,
+        -0.45167
       ]
     ],
     "fovy_used": 42.0,
@@ -260,11 +260,42 @@
         ],
         "fovy_used": 42.0
       }
+    },
+    "so100": {
+      "serial": "5B14110638",
+      "model": "so100",
+      "calibration": "robot/calibration/so100_follower.json",
+      "sim_mapping": "robot/calibration/sim_mapping.json",
+      "env_camera": {
+        "pos": [
+          -0.069,
+          -0.5951,
+          0.1493
+        ],
+        "R": [
+          [
+            0.99677,
+            -0.05503,
+            0.05847
+          ],
+          [
+            -0.077,
+            -0.44888,
+            0.89027
+          ],
+          [
+            -0.02274,
+            -0.89189,
+            -0.45167
+          ]
+        ],
+        "fovy_used": 42.0
+      }
     }
   },
-  "active_arm": "left",
+  "active_arm": "so100",
   "serial": "5B14110638",
-  "arm_model": "so101",
+  "arm_model": "so100",
   "env_camera_so100": {
     "index": 2,
     "width": 1280,
