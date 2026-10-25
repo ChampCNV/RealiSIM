@@ -91,32 +91,46 @@ def show(cfg):
 ROBOT_XML = {"so101": ("robotstudio_so101/so101.xml", "base"), "so100": ("trs_so_arm100/so_arm100.xml", "Base")}
 
 
-def view(cfg, spacing=0.45):
-    """Every plugged-in arm in one sim, side by side, copying the real arms (torque off: move them by hand).
-    Calibrated arms are copied exactly; uncalibrated ones from their raw motor positions (motor middle = joint
-    middle, as in a standard assembly), good enough to see each joint move."""
+def view(cfg, spacing=0.45, object_name="lego_tree"):
+    """Every plugged-in arm in the tree scene (the object in its placement area, the calibrated environment
+    camera), copying the real arms (torque off: move them by hand). The first arm stands at the robot origin the
+    object and camera are measured from, the others `spacing` m further along +x (the first arm's left, seen from
+    behind it) until their real spots are measured. Calibrated arms are copied exactly; uncalibrated ones from
+    their raw motor positions (motor middle = joint middle, as in a standard assembly), enough to see joints move."""
     import mujoco
     import mujoco.viewer
     import numpy as np
 
+    import sys
     from arm import MAX_POS, SOArm
     from sim_map import MENAGERIE, SIM_JOINTS, SimMap, load_sim
+    sys.path.insert(0, str(CONFIG.parent.parent / "sim2real"))
+    from tag_env import DEFAULT_AREA, from_ruler
 
     root = CONFIG.parent.parent
     plugged = boards()
     names = [n for n, a in cfg["arms"].items() if a["serial"] in plugged]
     if not names:
         raise SystemExit("no registered arm is plugged in (python robot/arms.py list)")
-    spec = mujoco.MjSpec()
-    spec.worldbody.add_light(pos=[0, -0.5, 1.5], dir=[0, 0.3, -1], diffuse=[0.8] * 3)
-    spec.worldbody.add_geom(type=mujoco.mjtGeom.mjGEOM_PLANE, size=[1, 1, 0.01], rgba=[0.35, 0.38, 0.42, 1])
+    # the single-arm scene's background (sky, checker floor, light): its scene file without the arm in it
+    scene = (MENAGERIE / "trs_so_arm100" / "scene.xml").read_text()
+    spec = mujoco.MjSpec.from_string(scene.replace('<include file="so_arm100.xml"/>', ""))
     for i, n in enumerate(names):
         xml, base = ROBOT_XML[cfg["arms"][n]["model"]]
         child = mujoco.MjSpec.from_file(str(MENAGERIE / xml))
         for k in ("timestep", "iterations", "ls_iterations", "impratio", "integrator", "cone"):
             setattr(spec.option, k, getattr(child.option, k))  # same settings: no attach warnings
-        x = (i - (len(names) - 1) / 2) * spacing
-        spec.worldbody.add_frame(pos=[x, 0, 0]).attach_body(child.body(base), f"{n}_", "")
+        spec.worldbody.add_frame(pos=[i * spacing, 0, 0]).attach_body(child.body(base), f"{n}_", "")
+    if object_name:  # standing in the middle of the placement area, facing the robot
+        a = DEFAULT_AREA
+        obj = mujoco.MjSpec.from_file(str(root / "assets" / object_name / f"{object_name}.xml"))
+        spec.worldbody.add_frame(pos=from_ruler((a["front_min"] + a["front_max"]) / 2, 0.0, 0.0)).attach_body(
+            obj.body(object_name), "", "")
+    ec = cfg.get("env_camera") or {}
+    if "pos" in ec:  # where the calibrated environment camera stands
+        q = np.zeros(4)
+        mujoco.mju_mat2Quat(q, (np.array(ec["R"]) @ np.diag([1, -1, -1])).ravel())  # OpenCV -> MuJoCo axes
+        spec.worldbody.add_camera(name="envcam", pos=ec["pos"], quat=q, fovy=ec["fovy_used"])
     model = spec.compile()
     data = mujoco.MjData(model)
     arms = []
@@ -137,6 +151,7 @@ def view(cfg, spacing=0.45):
     print("both arms are limp now (torque off): move them by hand, watch the sim. Close the sim window to stop.")
     try:
         with mujoco.viewer.launch_passive(model, data) as viewer:
+            viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CAMERA] = 1  # draw the environment camera
             while viewer.is_running():
                 for n, arm, joints, qadr, mapping, middle in arms:
                     if mapping is not None:
@@ -158,12 +173,14 @@ def main():
     ap.add_argument("action", choices=["list", "add", "use", "remove", "view"])
     ap.add_argument("name", nargs="?")
     ap.add_argument("--model", choices=MODELS, default="so101")
+    ap.add_argument("--spacing", type=float, default=0.45, help="view: m between the arms (until measured)")
+    ap.add_argument("--object", default="lego_tree", help="view: the object in the scene ('' for none)")
     args = ap.parse_args()
     cfg = load()
     if args.action == "list":
         return show(cfg)
     if args.action == "view":
-        return view(cfg)
+        return view(cfg, args.spacing, args.object)
     if not args.name:
         raise SystemExit(f"{args.action} needs an arm name")
     if args.action == "add":
