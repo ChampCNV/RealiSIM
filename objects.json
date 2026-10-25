@@ -1,7 +1,11 @@
 {
   "tomato_soup_can": {
     "source": "YCB object set, 005_tomato_soup_can (66 mm dia x 101 mm, 349 g)",
-    "size_m": [0.066, 0.066, 0.101],
+    "size_m": [
+      0.066,
+      0.066,
+      0.101
+    ],
     "mass_kg": 0.349,
     "material": "steel can with paper label",
     "collision": "cylinder",
@@ -19,10 +23,18 @@
   },
   "celsius_grape_can": {
     "source": "Celsius Sparkling Grape Rush, 12 oz Ball Sleek can (202/204 x 602 spec sheet: 57.37 mm body dia, 155.63 mm open height; lid seam adds ~1.5 mm -> 157 mm). Mass = 355 ml x 1.0 g/ml + ~13 g aluminium = 0.368 kg (estimate). Friction: painted aluminium on wood, no measured value found; 0.5, randomized in training",
-    "size_m": [0.0574, 0.0574, 0.157],
+    "size_m": [
+      0.0574,
+      0.0574,
+      0.157
+    ],
     "mass_kg": 0.368,
     "material": "aluminium can, filled",
-    "friction": [0.5, 0.005, 0.0001],
+    "friction": [
+      0.5,
+      0.005,
+      0.0001
+    ],
     "collision": "cylinder"
   },
   "printed_frame": {
@@ -65,7 +77,11 @@
       0.005,
       0.0001
     ],
-    "tag_height_m": 0.04
+    "tag_height_m": 0.04,
+    "tag_roll_deg": {
+      "back": -90.0,
+      "front": -180.0
+    }
   },
   "so101_motor_holder": {
     "source": "SO-ARM100 repo, STL/SO101/Individual/Motor_holder_SO101_Base.stl: 55.1 x 38.1 x 28.0 mm ring, 13.3 cm3 -> ~16 g PLA (1.24 g/cm3) if solid; friction = hard plastic on dry wood",
@@ -136,9 +152,12 @@
       0.0001
     ],
     "tags": {
-      "front": null,
-      "back": 2
+      "front": 4,
+      "back": 5
     },
-    "tag_height_m": 0.084
+    "tag_height_m": 0.084,
+    "tag_roll_deg": {
+      "back": 90.0
+    }
   }
 }

@@ -22,5 +22,6 @@
     0.0,
     0.0736
   ],
-  "collision_pieces": 6
+  "collision_pieces": 6,
+  "look_from": "celsius_sparkling_grape_rush_can"
 }

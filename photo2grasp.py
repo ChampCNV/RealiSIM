@@ -249,6 +249,56 @@ def add_hand(name, source=None):
         call("make_hand.py", name, src)
 
 
+def obj_vertices(path):
+    return np.array([[float(x) for x in ln.split()[1:4]] for ln in path.read_text().splitlines() if ln.startswith("v ")])
+
+
+def main_axis(v):
+    """Longest direction of a point cloud (pointing up) and how much longer it is than the next one."""
+    w, vecs = np.linalg.eigh(np.cov((v - v.mean(0)).T))
+    return vecs[:, -1] * np.sign(vecs[2, -1] or 1), w[-1] / w[-2]
+
+
+def rotation_between(a, b):
+    """Smallest rotation turning unit vector a onto b."""
+    v, c = np.cross(a, b), float(a @ b)
+    k = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    return np.eye(3) + k + k @ k / (1 + c)
+
+
+def copy_look(name, source):
+    """Give an object the look (visual mesh + texture) of another asset of the same kind of object, stretched to
+    its own visual's size. Its collision shape, mass and tags stay, so models trained on it still fit. The old
+    look is kept in outputs/<name>/look_before/."""
+    dst, src = ROOT / "assets" / name, ROOT / "assets" / source
+    files = {d: (d / f"{d.name}_visual.obj", d / f"{d.name}_texture.png") for d in (dst, src)}
+    for d, (mesh, tex) in files.items():
+        if not mesh.exists() or not tex.exists():
+            raise SystemExit(f"{d.name}: needs {mesh.name} and {tex.name} (a textured asset from this pipeline)")
+    old = obj_vertices(files[dst][0])
+    lo, size = old.min(0), np.ptp(old, 0)
+    new_v = obj_vertices(files[src][0])
+    (a_old, r_old), (a_new, r_new) = main_axis(old), main_axis(new_v)
+    if min(r_old, r_new) > 2:  # elongated (can, bottle): stand the new mesh along the old one's axis first
+        new_v = (new_v - new_v.mean(0)) @ rotation_between(a_new, a_old).T
+    new_v = (new_v - new_v.min(0)) / np.ptp(new_v, 0) * size + lo  # same box as the old visual
+    backup = ROOT / "outputs" / name / "look_before"
+    backup.mkdir(parents=True, exist_ok=True)
+    for f in files[dst]:
+        shutil.copy2(f, backup / f.name)
+    it = iter(new_v)
+    lines = [f"v {' '.join(f'{x:.6f}' for x in next(it))}" if ln.startswith("v ") else ln
+             for ln in files[src][0].read_text().splitlines()]
+    files[dst][0].write_text("\n".join(lines) + "\n")
+    shutil.copy2(files[src][1], files[dst][1])
+    props_path = dst / "properties.json"
+    props = json.loads(props_path.read_text())
+    props["look_from"] = source
+    props_path.write_text(json.dumps(props, indent=2))
+    print(f"{name} now looks like {source} ({len(new_v)} vertices, stretched to {np.round(size * 100, 1)} cm); "
+          f"collision, mass and tags unchanged. Old look: outputs/{name}/look_before/")
+
+
 def list_objects():
     objects = json.loads((ROOT / "objects.json").read_text())
     models = trained_models()
@@ -324,6 +374,9 @@ def main():
     rm.add_argument("--models", action="store_true", help="also delete its trained models in runs/")
     rm.add_argument("--purge", action="store_true",
                     help="also delete its saved mesh / the saved hand (then it cannot be added back)")
+    lk = sub.add_parser("look", help="give an object the textured look of another asset of the same object")
+    lk.add_argument("name")
+    lk.add_argument("--from", dest="source", required=True, help="the asset whose visual mesh + texture to use")
     tg = sub.add_parser("tags", help="set which AprilTag IDs are on an object (from a video, or typed)")
     tg.add_argument("name")
     tg.add_argument("inputs", nargs="*", help="optional video/photo showing the tags")
@@ -392,6 +445,9 @@ def main():
             remove_hand(rest[0], args.purge)
         else:
             remove_object(rest[0], args.models, args.purge)
+    elif args.step == "look":
+        copy_look(args.name, args.source)
+        print(f"next: python photo2grasp.py check {args.name}")
     elif args.step == "tags":
         sys.path.insert(0, str(ROOT / "pipeline"))
         from tag_ids import tag_setup
