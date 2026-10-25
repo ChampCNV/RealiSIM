@@ -391,7 +391,8 @@ def main():
     tr = sub.add_parser("track", help="live preview: move the real objects (and your hand), the sim follows")
     tr.add_argument("names", nargs="*", default=["lego_tree"], help="one or several objects")
     tr.add_argument("--all", action="store_true", help="every object whose tag IDs are set")
-    tr.add_argument("--hand", help="also track your hand (hands/<name>) with MediaPipe")
+    tr.add_argument("--hand", nargs="?", const="stick",
+                    help="also track your hand with MediaPipe: alone = stick pose; or a hand made with 'hand'")
     tr.add_argument("--depth", action="store_true", help="RealSense depth for the hand's distance")
     tr.add_argument("--video", help="a recorded video instead of the environment camera (try without the setup)")
     tr.add_argument("--camera", type=int, help="this camera index instead of the environment camera")
@@ -464,13 +465,16 @@ def main():
         ensure_robot()
         call("robot/calibrate_env_camera.py", "--object", args.name)
     elif args.step == "track":
-        extra = [*(["--hand", args.hand] if args.hand else []), *(["--depth"] if args.depth else []),
-                 *(["--video", Path(args.video).resolve()] if args.video else []),
+        extra = [*(["--depth"] if args.depth else []), *(["--video", Path(args.video).resolve()] if args.video else []),
                  *(["--camera", args.camera] if args.camera is not None else [])]
         if robot_status()["env_camera"]:  # several objects at once, each by its own tags
-            call("robot/track.py", *(["--all"] if args.all else args.names), *extra)
+            hand = ["--hand"] if args.hand == "stick" else ["--hand", args.hand] if args.hand else []
+            call("robot/track.py", *(["--all"] if args.all else args.names), *hand, *extra)
+        elif args.hand == "stick":
+            raise SystemExit("the stick hand needs the calibrated environment camera: photo2grasp.py calibrate <object>")
         else:  # not calibrated: one object, camera assumed at its planned spot (enough to try the hand)
-            call("robot/calibrate_env_camera.py", "--object", args.names[0], "--track", *extra)
+            call("robot/calibrate_env_camera.py", "--object", args.names[0], "--track",
+                 *(["--hand", args.hand] if args.hand else []), *extra)
     elif args.step == "train":
         init = [] if args.from_scratch or not (BEST_MODEL / "train_state.pt").exists() else ["--init", BEST_MODEL]
         extra = (["--steps", args.steps] if args.steps else []) + (["--hand", args.hand] if args.hand else [])
