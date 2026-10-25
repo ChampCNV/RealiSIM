@@ -34,6 +34,16 @@ def arm_model():
     return json.loads(cfg.read_text()).get("arm_model", "so100") if cfg.exists() else "so100"
 
 
+def require_arm_model(needed="so100", what="this"):
+    """Stop if the active arm is another model than the simulation this script (or trained model) uses: driving
+    an SO-101 with SO-100 geometry would put the gripper somewhere else than the sim thinks."""
+    active = arm_model()
+    if active != needed:
+        raise SystemExit(f"{what} uses the {needed.upper()} model, but the active arm is an {active.upper()} "
+                         f"(robot/arms.py list). Models trained for the {needed.upper()} cannot drive it; switch arms "
+                         f"with robot/arms.py use <name>, or use a model trained for the {active.upper()}.")
+
+
 def load_sim(model_name=None):
     model = mujoco.MjModel.from_xml_path(str(SCENES[model_name or arm_model()]))
     return model, mujoco.MjData(model)

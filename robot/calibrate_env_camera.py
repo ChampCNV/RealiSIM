@@ -49,7 +49,7 @@ from tag_env import (ENV_CAMERA, TAG, TagLiftEnv, back_to_front, from_ruler, int
 from arm import SOArm  # noqa: E402
 from camera import Camera, RealSense, VideoFile, camera_indices  # noqa: E402
 from hand_watch import HandWatcher, env_camera_pose  # noqa: E402
-from sim_map import SimMap  # noqa: E402
+from sim_map import SimMap, arm_model, require_arm_model  # noqa: E402
 
 CONFIG = Path(__file__).parent / "config.json"
 # back tag frame (OpenCV marker axes: x right, y up, z out of the face) seen from behind the object, in the
@@ -360,7 +360,9 @@ def main():
     cfg = json.loads(CONFIG.read_text())
     ec = cfg["env_camera"]
     arm = mapping = None
-    if not args.ruler:  # the arm is read (torque off) so the sim arm copies it
+    if not args.ruler and not args.track:  # touch calibration measures with the arm: the SO-100 sim's geometry
+        require_arm_model("so100", "touch calibration")
+    if not args.ruler and not (args.track and arm_model() != "so100"):  # the sim arm copies the real one
         try:
             arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
             mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)

@@ -27,7 +27,7 @@ from tag_env import (DEFAULT_AREA, SAFE_REST, WIDE_AREA, TagLiftEnv, path_cleara
 
 from arm import SOArm  # noqa: E402
 from calibrate_env_camera import CONFIG  # noqa: E402
-from sim_map import SimMap  # noqa: E402
+from sim_map import SimMap, require_arm_model  # noqa: E402
 from sim_mirror import Mirror  # noqa: E402
 
 
@@ -50,6 +50,7 @@ def main():
     m, cd = env.model, env.check_data
 
     cfg = json.loads(CONFIG.read_text())
+    require_arm_model(ck.get("arm_model", "so100") if args.checkpoint else "so100", "this start pose")
     arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
     mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
     if arm.calibration is None or not mapping.ready:

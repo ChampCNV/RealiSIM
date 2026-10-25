@@ -47,7 +47,7 @@ from arm import SOArm  # noqa: E402
 from calibrate_env_camera import CONFIG, touch_calibrate  # noqa: E402
 from camera import Camera, camera_indices  # noqa: E402
 from hand_watch import HandWatcher  # noqa: E402
-from sim_map import SimMap  # noqa: E402
+from sim_map import SimMap, require_arm_model  # noqa: E402
 from sim_mirror import Mirror  # noqa: E402
 
 DRIFT_WARN = 0.025  # m: wrist and environment camera disagree by more than this -> camera probably moved
@@ -169,6 +169,7 @@ def main():
     action_scale = np.array(ck["action_scale"])
     object_name = ck.get("object", "lego_tree")
 
+    require_arm_model(ck.get("arm_model", "so100"), "this trained model")  # older models: SO-100
     arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
     mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
     if arm.calibration is None or not mapping.ready:

@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "sim2real"))
 from lift_env import ARM_SCENE, WRIST_POS, WRIST_TARGET, look_at  # noqa: E402
 from arm import SOArm  # noqa: E402
 from camera import SIM_WRIST_FOVY, Camera, list_cameras  # noqa: E402
-from sim_map import SimMap  # noqa: E402
+from sim_map import SimMap, require_arm_model  # noqa: E402
 
 MARKER_DICT = cv2.aruco.DICT_ARUCO_ORIGINAL
 MARKER_ID = 0
@@ -67,6 +67,7 @@ def main():
     if not (args.fovy or cc.get("vertical_fov_deg")):
         print(f"NOTE: real camera field of view unknown, assuming {fovy} deg (distances scale with this)")
 
+    require_arm_model("so100", "this script")
     arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
     if arm.calibration is None:
         raise SystemExit("Calibrate first: python robot\\calibrate.py")

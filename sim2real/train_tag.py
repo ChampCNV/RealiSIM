@@ -164,7 +164,8 @@ def main():
                 tag={k: v for k, v in TAG.items() if k != "dictionary"}, tag_family="DICT_APRILTAG_36h11",
                 state_dim=sd, action_dim=ad, action_scale=e0.action_scale.tolist(), control_dt=e0.control_dt,
                 max_steps=e0.max_steps, min_camera_clearance=e0.min_camera_clearance,
-                hand=hand, hand_role="from" if hand else None)  # the whole hand model: runs without hands/
+                hand=hand, hand_role="from" if hand else None,  # the whole hand model: runs without hands/
+                arm_model="so100")  # the simulated arm (robot/arms.py checks it matches the real one)
 
     def save(path):
         torch.save(dict(actor=actor.state_dict(), **meta), path)

@@ -23,7 +23,7 @@ from tag_env import ENV_CAMERA, TAG, TagLiftEnv, object_tags, ruler  # noqa: E40
 
 from arm import SOArm  # noqa: E402
 from camera import Camera, camera_indices  # noqa: E402
-from sim_map import SimMap  # noqa: E402
+from sim_map import SimMap, require_arm_model  # noqa: E402
 
 TILE = (640, 360)
 
@@ -71,6 +71,7 @@ def main():
     arm = mapping = None
     if not args.no_arm:
         try:
+            require_arm_model("so100", "the camera check (SO-100 sim)")
             arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
             mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
             arm.connect()

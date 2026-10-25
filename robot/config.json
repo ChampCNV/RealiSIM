@@ -1,8 +1,8 @@
 {
-  "port": "COM15",
+  "port": "COM16",
   "baudrate": 1000000,
-  "calibration": "robot/calibration/so100_follower.json",
-  "sim_mapping": "robot/calibration/sim_mapping.json",
+  "calibration": "robot/calibration/right_follower.json",
+  "sim_mapping": "robot/calibration/right_sim_mapping.json",
   "wrist_camera": {
     "index": 1,
     "width": 1280,
@@ -197,5 +197,204 @@
       "tag_mm": 27.61
     }
   },
-  "tag_mm": 27.61
+  "tag_mm": 27.61,
+  "arms": {
+    "left": {
+      "serial": "5B14110638",
+      "model": "so101",
+      "calibration": "robot/calibration/left_follower.json",
+      "sim_mapping": "robot/calibration/left_sim_mapping.json"
+    },
+    "right": {
+      "serial": "5AE6079895",
+      "model": "so101",
+      "calibration": "robot/calibration/right_follower.json",
+      "sim_mapping": "robot/calibration/right_sim_mapping.json"
+    }
+  },
+  "active_arm": "right",
+  "serial": "5AE6079895",
+  "arm_model": "so101",
+  "env_camera_so100": {
+    "index": 2,
+    "width": 1280,
+    "height": 720,
+    "fixed_exposure": null,
+    "vertical_fov_deg": 42.0,
+    "note": "RealSense D435 colour stream (69 x 42 deg field of view)",
+    "pos": [
+      -0.069,
+      -0.5951,
+      0.1493
+    ],
+    "R": [
+      [
+        0.99677,
+        -0.05503,
+        0.05847
+      ],
+      [
+        -0.077,
+        -0.44888,
+        0.89027
+      ],
+      [
+        -0.02274,
+        -0.89189,
+        -0.45167
+      ]
+    ],
+    "fovy_used": 42.0,
+    "calib_points": {
+      "world": [
+        [
+          -0.02549,
+          -0.35752,
+          0.07738
+        ],
+        [
+          0.00212,
+          -0.35752,
+          0.07738
+        ],
+        [
+          0.00212,
+          -0.35752,
+          0.04977
+        ],
+        [
+          -0.02549,
+          -0.35752,
+          0.04977
+        ],
+        [
+          0.07345,
+          -0.37285,
+          0.07326
+        ],
+        [
+          0.10106,
+          -0.37285,
+          0.07326
+        ],
+        [
+          0.10106,
+          -0.37285,
+          0.04564
+        ],
+        [
+          0.07345,
+          -0.37285,
+          0.04564
+        ],
+        [
+          -0.20412,
+          -0.35875,
+          0.09925
+        ],
+        [
+          -0.17651,
+          -0.35875,
+          0.09925
+        ],
+        [
+          -0.17651,
+          -0.35875,
+          0.07163
+        ],
+        [
+          -0.20412,
+          -0.35875,
+          0.07163
+        ],
+        [
+          -0.03182,
+          -0.47807,
+          0.08933
+        ],
+        [
+          -0.0042,
+          -0.47807,
+          0.08933
+        ],
+        [
+          -0.0042,
+          -0.47807,
+          0.06171
+        ],
+        [
+          -0.03182,
+          -0.47807,
+          0.06171
+        ]
+      ],
+      "image": [
+        [
+          780.07,
+          179.0
+        ],
+        [
+          878.07,
+          180.47
+        ],
+        [
+          864.87,
+          278.87
+        ],
+        [
+          770.53,
+          278.0
+        ],
+        [
+          1114.93,
+          198.07
+        ],
+        [
+          1223.53,
+          203.07
+        ],
+        [
+          1198.07,
+          308.0
+        ],
+        [
+          1092.87,
+          302.27
+        ],
+        [
+          13.6,
+          145.93
+        ],
+        [
+          124.4,
+          143.0
+        ],
+        [
+          136.53,
+          234.93
+        ],
+        [
+          30.87,
+          243.0
+        ],
+        [
+          840.2,
+          336.53
+        ],
+        [
+          1038.0,
+          330.2
+        ],
+        [
+          1003.13,
+          517.13
+        ],
+        [
+          816.53,
+          526.2
+        ]
+      ],
+      "tag_mm": 27.61
+    }
+  }
 }

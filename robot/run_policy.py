@@ -24,7 +24,7 @@ from train_sac import Actor, to_img  # noqa: E402
 
 from arm import SOArm  # noqa: E402
 from camera import Camera, list_cameras, policy_view  # noqa: E402
-from sim_map import SimMap, load_sim, sim_pose  # noqa: E402
+from sim_map import SimMap, load_sim, require_arm_model, sim_pose  # noqa: E402
 from sim_mirror import Mirror  # noqa: E402  (slow, speed-limited eased moves)
 
 STATE_DIM = 12  # 6 joint angles + 6 joint targets, as in the simulation
@@ -49,6 +49,7 @@ def main():
     actor.load_state_dict(ckpt["actor"])
     actor.eval()
 
+    require_arm_model("so100", "this image policy")
     arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
     mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
     if arm.calibration is None or not mapping.ready:

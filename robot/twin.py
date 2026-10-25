@@ -17,13 +17,14 @@ import mujoco
 import mujoco.viewer
 
 from arm import SOArm, read_key as terminal_key
-from sim_map import JOINTS, SimMap, load_sim
+from sim_map import JOINTS, SimMap, load_sim, require_arm_model
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def main():
     cfg = json.loads((Path(__file__).parent / "config.json").read_text())
+    require_arm_model("so100", "the digital twin (SO-100 sim)")
     arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
     if arm.calibration is None:
         sys.exit("No calibration yet: run robot/calibrate.py first.")

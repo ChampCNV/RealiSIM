@@ -215,7 +215,9 @@ def main():
     arm = mapping = None
     try:  # optional: the sim arm copies the real one (torque off)
         from arm import SOArm
-        from sim_map import SimMap
+        from sim_map import SimMap, arm_model
+        if arm_model() != "so100":
+            raise RuntimeError(f"the active arm is an {arm_model().upper()}, this sim shows the SO-100")
         arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
         mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
         arm.connect()

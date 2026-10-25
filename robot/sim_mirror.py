@@ -24,7 +24,7 @@ from lift_env import LiftEnv, start_pose  # noqa: E402
 from train_sac import Actor, to_img  # noqa: E402
 
 from arm import SOArm  # noqa: E402
-from sim_map import SimMap, sim_pose  # noqa: E402
+from sim_map import SimMap, require_arm_model, sim_pose  # noqa: E402
 
 RATE = 50  # Hz of commands to the real arm
 
@@ -112,6 +112,7 @@ def main():
     if args.preview:
         mapping = SimMap(ROOT / cfg["sim_mapping"])
     else:
+        require_arm_model("so100", "this policy")
         arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
         mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
         if arm.calibration is None or not mapping.ready:
