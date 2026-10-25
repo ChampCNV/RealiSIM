@@ -2617,7 +2617,7 @@ function Dashboard({ api, list, listError, onRetry, system, onOpen, onNew, onDel
           <p style={{ margin: '8px 0 0', fontSize: 14, lineHeight: 1.6, color: C.text2, maxWidth: 640 }}>RealiSIM turns a phone video of your table or an object into simulation-ready 3D assets and a physics scene you can export as a Gymnasium environment.</p>
         </div>
         <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: narrow ? '1fr' : 'repeat(3,minmax(0,1fr))', gap: narrow ? 10 : 20 }}>
-          {[['Upload a video', 'A short clip of your workspace or one object.'], ['Autofill with Claude', 'It finds the objects and sizes. You check them.'], ['Build and export', 'Get 3D assets, a tested scene and a download.']].map(([t, d], i) => (
+          {[['Upload a video', 'A short clip of your workspace or one object.'], ['Autofill with Claude + Apify web scraper', 'Claude finds the objects and sizes; Apify looks up real product specs online. You check them.'], ['Build and export', 'Get 3D assets, a tested scene and a download.']].map(([t, d], i) => (
             <li key={t} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <span aria-hidden="true" style={{ fontFamily: MONO, fontSize: 12, color: C.accent, lineHeight: '20px', minWidth: 16 }}>{i + 1}</span>
               <span><span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: C.text }}>{t}</span><span style={{ display: 'block', fontSize: 12.5, color: C.text3, lineHeight: 1.5, marginTop: 2 }}>{d}</span></span>
