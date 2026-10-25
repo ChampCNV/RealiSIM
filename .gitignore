@@ -33,3 +33,6 @@ assets/apriltag/
 # People's hands (made by make_hand.py): personal measurements, kept local; the sample (from a stock photo) is shared
 hands/*
 !hands/sample_hand/
+
+# Exported simulations (export_sims.py rebuilds them; two_arms is >100 MB, over GitHub's file limit)
+sims/*.mjb
