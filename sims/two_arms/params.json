@@ -1,0 +1,335 @@
+{
+  "name": "two_arms",
+  "exported": "2026-10-24 19:10",
+  "mujoco": "3.16.0",
+  "about": "left (so101), right (so101) at their measured spots, lego_tree, the calibrated camera",
+  "kind": "two_arms",
+  "reference_arm": "left",
+  "arms": {
+    "left": {
+      "model": "so101",
+      "serial": "5B14110638",
+      "measured": true,
+      "stands_at_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "turned_deg": 0.0,
+      "env_camera": {
+        "pos": [
+          -0.0642,
+          -0.5802,
+          0.1621
+        ],
+        "R": [
+          [
+            0.9938,
+            0.04401,
+            0.10212
+          ],
+          [
+            -0.07888,
+            -0.36835,
+            0.92634
+          ],
+          [
+            0.07838,
+            -0.92865,
+            -0.36259
+          ]
+        ],
+        "fovy_used": 42.0
+      },
+      "calibration": "calibration/left_follower.json",
+      "sim_mapping": "calibration/left_sim_mapping.json"
+    },
+    "right": {
+      "model": "so101",
+      "serial": "5AE6079895",
+      "measured": true,
+      "stands_at_m": [
+        -0.18727253944257,
+        0.01610984092256995,
+        0.0
+      ],
+      "turned_deg": 3.2990342968355693,
+      "env_camera": {
+        "pos": [
+          0.0771,
+          -0.6102,
+          0.1761
+        ],
+        "R": [
+          [
+            0.98146,
+            0.07614,
+            0.17587
+          ],
+          [
+            -0.14141,
+            -0.33169,
+            0.93273
+          ],
+          [
+            0.12935,
+            -0.94031,
+            -0.31478
+          ]
+        ],
+        "fovy_used": 42.0
+      },
+      "calibration": "calibration/right_follower.json",
+      "sim_mapping": "calibration/right_sim_mapping.json"
+    }
+  },
+  "placement_report": [
+    "right: -18.7 cm x, +1.6 cm y from left, turned +3.3 deg (calibration mismatch: -3.4 cm height, 4.1 deg tilt)"
+  ],
+  "object": {
+    "name": "lego_tree",
+    "objects_json": {
+      "source": "Custom LEGO build (TreeHacks), no online model. Size measured from photo 4 using the 1x4 tile (31.8 mm, LEGO standard) as a ruler: ~69 x 18 x 75 mm. Density 477 kg/m3 = 2x4 brick 2.3 g / 31.8x15.8x9.6 mm (hollow ABS). Friction: no measured ABS value found online; 0.4 (hard plastic), randomized in training",
+      "size_m": [
+        0.069,
+        0.018,
+        0.075
+      ],
+      "density_kg_m3": 477,
+      "material": "LEGO ABS plastic",
+      "friction": [
+        0.4,
+        0.005,
+        0.0001
+      ],
+      "tag_height_m": 0.04,
+      "tag_roll_deg": {
+        "back": -90.0,
+        "front": -180.0
+      },
+      "tags": {
+        "front": 0,
+        "back": 1
+      }
+    },
+    "properties": {
+      "source": "Custom LEGO build (TreeHacks), no online model. Size measured from photo 4 using the 1x4 tile (31.8 mm, LEGO standard) as a ruler: ~69 x 18 x 75 mm. Density 477 kg/m3 = 2x4 brick 2.3 g / 31.8x15.8x9.6 mm (hollow ABS). Friction: no measured ABS value found online; 0.4 (hard plastic), randomized in training",
+      "size_m": [
+        0.069,
+        0.018,
+        0.075
+      ],
+      "density_kg_m3": 477,
+      "material": "LEGO ABS plastic",
+      "friction": [
+        0.4,
+        0.005,
+        0.0001
+      ],
+      "mass_kg": 0.01401,
+      "center_of_mass": [
+        0.0005,
+        -0.0001,
+        0.0302
+      ],
+      "collision_pieces": 5
+    }
+  },
+  "camera": {
+    "env_camera": {
+      "index": 2,
+      "width": 1280,
+      "height": 720,
+      "fixed_exposure": null,
+      "vertical_fov_deg": 42.0,
+      "note": "RealSense D435 colour stream (69 x 42 deg field of view)",
+      "pos": [
+        -0.0642,
+        -0.5802,
+        0.1621
+      ],
+      "R": [
+        [
+          0.9938,
+          0.04401,
+          0.10212
+        ],
+        [
+          -0.07888,
+          -0.36835,
+          0.92634
+        ],
+        [
+          0.07838,
+          -0.92865,
+          -0.36259
+        ]
+      ],
+      "fovy_used": 42.0,
+      "calib_points": {
+        "world": [
+          [
+            0.01649,
+            -0.30733,
+            0.05954
+          ],
+          [
+            0.0402,
+            -0.30733,
+            0.05954
+          ],
+          [
+            0.0402,
+            -0.30733,
+            0.03583
+          ],
+          [
+            0.01649,
+            -0.30733,
+            0.03583
+          ],
+          [
+            -0.01058,
+            -0.42392,
+            0.0684
+          ],
+          [
+            0.01313,
+            -0.42392,
+            0.0684
+          ],
+          [
+            0.01313,
+            -0.42392,
+            0.04469
+          ],
+          [
+            -0.01058,
+            -0.42392,
+            0.04469
+          ],
+          [
+            -0.16095,
+            -0.42081,
+            0.06648
+          ],
+          [
+            -0.13725,
+            -0.42081,
+            0.06648
+          ],
+          [
+            -0.13725,
+            -0.42081,
+            0.04278
+          ],
+          [
+            -0.16095,
+            -0.42081,
+            0.04278
+          ],
+          [
+            0.05111,
+            -0.42749,
+            0.06723
+          ],
+          [
+            0.07481,
+            -0.42749,
+            0.06723
+          ],
+          [
+            0.07481,
+            -0.42749,
+            0.04352
+          ],
+          [
+            0.05111,
+            -0.42749,
+            0.04352
+          ]
+        ],
+        "image": [
+          [
+            804.8,
+            354.93
+          ],
+          [
+            878.0,
+            355.0
+          ],
+          [
+            872.53,
+            424.07
+          ],
+          [
+            801.0,
+            424.0
+          ],
+          [
+            818.07,
+            523.0
+          ],
+          [
+            934.73,
+            516.93
+          ],
+          [
+            925.8,
+            624.0
+          ],
+          [
+            813.07,
+            632.0
+          ],
+          [
+            10.33,
+            502.87
+          ],
+          [
+            126.13,
+            502.07
+          ],
+          [
+            145.6,
+            606.73
+          ],
+          [
+            32.47,
+            608.13
+          ],
+          [
+            1092.8,
+            544.6
+          ],
+          [
+            1205.67,
+            534.27
+          ],
+          [
+            1186.2,
+            644.0
+          ],
+          [
+            1076.67,
+            656.07
+          ]
+        ],
+        "tag_mm": 23.71
+      }
+    },
+    "wrist_camera": {
+      "index": 1,
+      "width": 1280,
+      "height": 720,
+      "fixed_exposure": null,
+      "vertical_fov_deg": null
+    },
+    "tag_mm": 23.71
+  },
+  "files": {
+    "scene": "scene.mjb",
+    "asset": "assets/lego_tree",
+    "calibration": "calibration/"
+  }
+}

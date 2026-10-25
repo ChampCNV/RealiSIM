@@ -1,0 +1,399 @@
+{
+  "name": "can_pick",
+  "exported": "2026-10-24 19:10",
+  "mujoco": "3.16.0",
+  "about": "SO-100 + celsius_can, trained model tag_celsius_can_celsius_can_backup_2000k",
+  "kind": "pick",
+  "arm_model": "so100",
+  "object": {
+    "name": "celsius_can",
+    "objects_json": {
+      "source": "Celsius Sparkling Grape Rush, 12 fl oz slim aluminium can (opened, treated as empty). Size: 12 oz slim can ~6.13 in tall x 2.25 in wide (brainbound.blog slim can guide; Ball 202 slim can 6.13 in flanged height) = 57 x 57 x 156 mm. Mass: empty 12 oz aluminium can ~13 g (typical; 0.368 kg if full, 355 ml). Friction: painted aluminium on cloth ~0.5",
+      "size_m": [
+        0.057,
+        0.057,
+        0.156
+      ],
+      "mass_kg": 0.013,
+      "material": "aluminium can (printed coating)",
+      "collision": "cylinder",
+      "friction": [
+        0.5,
+        0.005,
+        0.0001
+      ],
+      "tags": {
+        "front": 4,
+        "back": 5
+      },
+      "tag_height_m": 0.084,
+      "tag_roll_deg": {
+        "back": 90.0
+      }
+    },
+    "properties": {
+      "source": "Celsius Sparkling Grape Rush, 12 fl oz slim aluminium can (opened, treated as empty). Size: 12 oz slim can ~6.13 in tall x 2.25 in wide (brainbound.blog slim can guide; Ball 202 slim can 6.13 in flanged height) = 57 x 57 x 156 mm. Mass: empty 12 oz aluminium can ~13 g (typical; 0.368 kg if full, 355 ml). Friction: painted aluminium on cloth ~0.5",
+      "size_m": [
+        0.057,
+        0.057,
+        0.156
+      ],
+      "mass_kg": 0.013,
+      "material": "aluminium can (printed coating)",
+      "friction": [
+        0.5,
+        0.005,
+        0.0001
+      ],
+      "tags": {
+        "front": null,
+        "back": 2
+      },
+      "tag_height_m": 0.084,
+      "center_of_mass": [
+        0.0003,
+        0.0,
+        0.0736
+      ],
+      "collision_pieces": 6,
+      "look_from": "celsius_sparkling_grape_rush_can"
+    }
+  },
+  "training": {
+    "object": "celsius_can",
+    "area": {
+      "front_min": 0.12,
+      "front_max": 0.28,
+      "side": 0.15,
+      "yaw_deg": 45
+    },
+    "tag_height": 0.084,
+    "start": [
+      0.0,
+      -3.284,
+      2.855,
+      0.944,
+      -1.659,
+      1.0
+    ],
+    "scan_turns": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        -0.45,
+        0.0
+      ],
+      [
+        0.45,
+        0.0
+      ],
+      [
+        0.0,
+        0.3
+      ],
+      [
+        0.0,
+        -0.3
+      ],
+      [
+        -0.45,
+        0.3
+      ],
+      [
+        0.45,
+        0.3
+      ],
+      [
+        -0.45,
+        -0.3
+      ],
+      [
+        0.45,
+        -0.3
+      ]
+    ],
+    "scan_frames": 3,
+    "webcam": {
+      "width": 1280,
+      "height": 720,
+      "hfov": 65.0,
+      "pos": [
+        0.0,
+        -0.02,
+        0.035
+      ],
+      "target": [
+        0.0,
+        -0.2,
+        0.0
+      ]
+    },
+    "env_camera": {
+      "width": 1280,
+      "height": 720,
+      "hfov": 65.0,
+      "pos": [
+        0.0,
+        -0.6,
+        0.3
+      ],
+      "target": [
+        0.0,
+        -0.235,
+        0.03
+      ],
+      "pos_noise": [
+        0.15,
+        0.08,
+        0.1
+      ],
+      "target_noise": 0.04,
+      "hfov_noise": 8.0
+    },
+    "back_tag_id": 1,
+    "tag_depth": 0.05797841,
+    "tag": {
+      "id": 0,
+      "size": 0.025,
+      "margin": 0.002,
+      "centre_height": 0.04
+    },
+    "tag_family": "DICT_APRILTAG_36h11",
+    "state_dim": 20,
+    "action_dim": 6,
+    "action_scale": [
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.1,
+      0.3
+    ],
+    "control_dt": 0.1,
+    "max_steps": 80,
+    "min_camera_clearance": 0.03,
+    "hand": null,
+    "hand_role": null
+  },
+  "training_args": {
+    "object": "celsius_can",
+    "steps": 2000000,
+    "num_envs": 8,
+    "updates_per_step": 1.0,
+    "batch": 256,
+    "buffer": 1000000,
+    "learning_starts": 10000,
+    "gamma": 0.9,
+    "tau": 0.01,
+    "lr": 0.0003,
+    "eval_every": 25000,
+    "eval_episodes": 30,
+    "seed": 0,
+    "out": "/content/so100_tag/runs",
+    "resume": null,
+    "area": "wide",
+    "init": null,
+    "force": false,
+    "hand": null
+  },
+  "real_setup": {
+    "note": "the SO-100 setup this model ran on (camera seen from the SO-100's base)",
+    "env_camera": {
+      "index": 2,
+      "width": 1280,
+      "height": 720,
+      "fixed_exposure": null,
+      "vertical_fov_deg": 42.0,
+      "note": "RealSense D435 colour stream (69 x 42 deg field of view)",
+      "pos": [
+        -0.069,
+        -0.5951,
+        0.1493
+      ],
+      "R": [
+        [
+          0.99677,
+          -0.05503,
+          0.05847
+        ],
+        [
+          -0.077,
+          -0.44888,
+          0.89027
+        ],
+        [
+          -0.02274,
+          -0.89189,
+          -0.45167
+        ]
+      ],
+      "fovy_used": 42.0,
+      "calib_points": {
+        "world": [
+          [
+            -0.02549,
+            -0.35752,
+            0.07738
+          ],
+          [
+            0.00212,
+            -0.35752,
+            0.07738
+          ],
+          [
+            0.00212,
+            -0.35752,
+            0.04977
+          ],
+          [
+            -0.02549,
+            -0.35752,
+            0.04977
+          ],
+          [
+            0.07345,
+            -0.37285,
+            0.07326
+          ],
+          [
+            0.10106,
+            -0.37285,
+            0.07326
+          ],
+          [
+            0.10106,
+            -0.37285,
+            0.04564
+          ],
+          [
+            0.07345,
+            -0.37285,
+            0.04564
+          ],
+          [
+            -0.20412,
+            -0.35875,
+            0.09925
+          ],
+          [
+            -0.17651,
+            -0.35875,
+            0.09925
+          ],
+          [
+            -0.17651,
+            -0.35875,
+            0.07163
+          ],
+          [
+            -0.20412,
+            -0.35875,
+            0.07163
+          ],
+          [
+            -0.03182,
+            -0.47807,
+            0.08933
+          ],
+          [
+            -0.0042,
+            -0.47807,
+            0.08933
+          ],
+          [
+            -0.0042,
+            -0.47807,
+            0.06171
+          ],
+          [
+            -0.03182,
+            -0.47807,
+            0.06171
+          ]
+        ],
+        "image": [
+          [
+            780.07,
+            179.0
+          ],
+          [
+            878.07,
+            180.47
+          ],
+          [
+            864.87,
+            278.87
+          ],
+          [
+            770.53,
+            278.0
+          ],
+          [
+            1114.93,
+            198.07
+          ],
+          [
+            1223.53,
+            203.07
+          ],
+          [
+            1198.07,
+            308.0
+          ],
+          [
+            1092.87,
+            302.27
+          ],
+          [
+            13.6,
+            145.93
+          ],
+          [
+            124.4,
+            143.0
+          ],
+          [
+            136.53,
+            234.93
+          ],
+          [
+            30.87,
+            243.0
+          ],
+          [
+            840.2,
+            336.53
+          ],
+          [
+            1038.0,
+            330.2
+          ],
+          [
+            1003.13,
+            517.13
+          ],
+          [
+            816.53,
+            526.2
+          ]
+        ],
+        "tag_mm": 27.61
+      }
+    },
+    "tag_mm": 23.71,
+    "wrist_camera": {
+      "index": 1,
+      "width": 1280,
+      "height": 720,
+      "fixed_exposure": null,
+      "vertical_fov_deg": null
+    }
+  },
+  "files": {
+    "scene": "scene.mjb",
+    "asset": "assets/celsius_can",
+    "model": "model/actor_last.pt"
+  }
+}

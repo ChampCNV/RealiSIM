@@ -34,5 +34,7 @@ assets/apriltag/
 hands/*
 !hands/sample_hand/
 
-# Exported simulations (export_sims.py rebuilds them; two_arms is >100 MB, over GitHub's file limit)
-sims/*.mjb
+# Exported sim packages (export_sims.py rebuilds them; two_arms is >100 MB, over GitHub's file limit):
+# only each package's params.json (every setting, small) is kept in git
+sims/*/*
+!sims/*/params.json

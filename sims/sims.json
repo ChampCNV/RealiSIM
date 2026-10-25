@@ -1,14 +1,5 @@
 {
-  "tree_pick": {
-    "file": "tree_pick.mjb",
-    "about": "SO-100 + lego_tree, as trained for runs/tag_envcam_2250k/actor_last.pt (watch it: sim2real/view_tag_env.py runs/tag_envcam_2250k/actor_last.pt)"
-  },
-  "can_pick": {
-    "file": "can_pick.mjb",
-    "about": "SO-100 + celsius_can, as trained for runs/tag_celsius_can_celsius_can_backup_2000k/actor_last.pt (watch it: sim2real/view_tag_env.py runs/tag_celsius_can_celsius_can_backup_2000k/actor_last.pt)"
-  },
-  "two_arms": {
-    "file": "two_arms.mjb",
-    "about": "left (so101), right (so101) at their measured spots (reference: left), lego_tree, the calibrated camera"
-  }
+  "tree_pick": "sims\\tree_pick",
+  "can_pick": "sims\\can_pick",
+  "two_arms": "sims\\two_arms"
 }
