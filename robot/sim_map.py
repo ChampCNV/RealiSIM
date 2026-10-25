@@ -16,15 +16,26 @@ import mujoco
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
-ARM_SCENE = ROOT / "third_party" / "mujoco_menagerie" / "trs_so_arm100" / "scene.xml"
-# real motor name -> SO-100 simulation joint (same order as the motor IDs 1-6)
-JOINTS = {"shoulder_pan": "Rotation", "shoulder_lift": "Pitch", "elbow_flex": "Elbow",
-          "wrist_flex": "Wrist_Pitch", "wrist_roll": "Wrist_Roll", "gripper": "Jaw"}
+MENAGERIE = ROOT / "third_party" / "mujoco_menagerie"
+SCENES = {"so100": MENAGERIE / "trs_so_arm100" / "scene.xml", "so101": MENAGERIE / "robotstudio_so101" / "scene.xml"}
+ARM_SCENE = SCENES["so100"]
+# real motor name -> simulation joint, per arm model (same order as the motor IDs 1-6)
+SIM_JOINTS = {"so100": {"shoulder_pan": "Rotation", "shoulder_lift": "Pitch", "elbow_flex": "Elbow",
+                        "wrist_flex": "Wrist_Pitch", "wrist_roll": "Wrist_Roll", "gripper": "Jaw"},
+              "so101": {m: m for m in ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll",
+                                       "gripper")}}
+JOINTS = SIM_JOINTS["so100"]  # the motor names (keys) are the same for every model
 HALF_TURN, MAX_POS = 2047, 4095
 
 
-def load_sim():
-    model = mujoco.MjModel.from_xml_path(str(ARM_SCENE))
+def arm_model():
+    """The active arm's model (robot/arms.py; arms set up before that are SO-100s)."""
+    cfg = ROOT / "robot" / "config.json"
+    return json.loads(cfg.read_text()).get("arm_model", "so100") if cfg.exists() else "so100"
+
+
+def load_sim(model_name=None):
+    model = mujoco.MjModel.from_xml_path(str(SCENES[model_name or arm_model()]))
     return model, mujoco.MjData(model)
 
 
@@ -66,6 +77,7 @@ class SimMap:
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps({m: dict(sim_joint=JOINTS[m], sign=int(s), offset_deg=round(float(o), 2))
+        names = SIM_JOINTS[arm_model()]
+        self.path.write_text(json.dumps({m: dict(sim_joint=names[m], sign=int(s), offset_deg=round(float(o), 2))
                                          for m, s, o in zip(JOINTS, self.sign, self.offset)}, indent=2))
         self.ready = True
