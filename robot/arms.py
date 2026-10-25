@@ -8,6 +8,7 @@ mixes them up. Every arm has its own calibration files; one arm is "active" at a
     python robot/arms.py use right            # make it the active arm
     python robot/arms.py remove right
     python robot/arms.py view                 # every plugged-in arm side by side in the sim, copying the real ones
+    python robot/arms.py identify             # move one arm by hand: tells you which name it has
 
 robot/config.json "arms": {name: {serial, model, calibration, sim_mapping}}; the active arm's entries are also
 written to the top-level "port", "serial", "calibration", "sim_mapping" and "arm_model" the scripts read.
@@ -166,9 +167,35 @@ def view(cfg, spacing=0.45, object_name="lego_tree"):
             arm.disconnect(torque_off=True)
 
 
+def identify(cfg, seconds=20):
+    """Which physical arm is which: move one arm by hand, it is named (raw motor positions, torque untouched)."""
+    from arm import SOArm
+    root, plugged = CONFIG.parent.parent, boards()
+    arms = {}
+    for n, a in cfg["arms"].items():
+        if a["serial"] in plugged:
+            arm = SOArm(plugged[a["serial"]], root / a["calibration"], cfg["baudrate"], serial=a["serial"])
+            arm.connect()
+            arms[n] = (arm, arm.read_raw())
+    print(f"move ONE arm by hand (any joint) for a moment; watching for {seconds} s ...")
+    t_end, last = time.time() + seconds, None
+    try:
+        while time.time() < t_end:
+            moved = {n: max(abs(v - start[m]) for m, v in arm.read_raw().items()) for n, (arm, start) in arms.items()}
+            name = max(moved, key=moved.get)
+            if moved[name] > 60 and name != last:  # ~5 deg on some joint
+                print(f"   you are moving '{name}' (board {cfg['arms'][name]['serial']})"
+                      + ("  <- the ACTIVE arm" if cfg.get("active_arm") == name else ""))
+                last = name
+            time.sleep(0.1)
+    finally:
+        for arm, _ in arms.values():
+            arm.disconnect(torque_off=False)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("action", choices=["list", "add", "use", "remove", "view"])
+    ap.add_argument("action", choices=["list", "add", "use", "remove", "view", "identify"])
     ap.add_argument("name", nargs="?")
     ap.add_argument("--model", choices=MODELS, default="so101")
     ap.add_argument("--spacing", type=float, default=0.45, help="view: m between the arms (until measured)")
@@ -179,6 +206,8 @@ def main():
         return show(cfg)
     if args.action == "view":
         return view(cfg, args.spacing, args.object)
+    if args.action == "identify":
+        return identify(cfg)
     if not args.name:
         raise SystemExit(f"{args.action} needs an arm name")
     if args.action == "add":
