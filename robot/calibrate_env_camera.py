@@ -49,7 +49,7 @@ from tag_env import (ENV_CAMERA, TAG, TagLiftEnv, back_to_front, from_ruler, int
 from arm import SOArm  # noqa: E402
 from camera import Camera, RealSense, VideoFile, camera_indices  # noqa: E402
 from hand_watch import HandWatcher, env_camera_pose  # noqa: E402
-from sim_map import SimMap, arm_model, require_arm_model  # noqa: E402
+from sim_map import MENAGERIE, ROBOT_XML, SIM_JOINTS, TIP_GEOMS, SimMap, arm_model, arm_placement  # noqa: E402
 
 CONFIG = Path(__file__).parent / "config.json"
 # back tag frame (OpenCV marker axes: x right, y up, z out of the face) seen from behind the object, in the
@@ -92,6 +92,55 @@ class BackTagFinder:
             if self.tag_id in ids.ravel():
                 return upright(corners[list(ids.ravel()).index(self.tag_id)][0])
         return None
+
+
+class ArmScene:
+    """The active arm's model + the object with its tags + the environment camera, with the names touch
+    calibration and SimView use (as TagLiftEnv has them, which is the SO-100 training scene)."""
+
+    def __init__(self, object_name, model_name):
+        from lift_env import front_face_y
+        from tag_env import BACK_TAG_ID, object_setup, tag_png
+        background = (MENAGERIE / "trs_so_arm100" / "scene.xml").read_text()  # the SO-100 scene without its arm
+        scene = mujoco.MjSpec.from_string(background.replace('<include file="so_arm100.xml"/>', ""))
+        xml, base = ROBOT_XML[model_name]
+        arm = mujoco.MjSpec.from_file(str(MENAGERIE / xml))
+        for k in ("timestep", "iterations", "ls_iterations", "impratio", "integrator", "cone"):
+            setattr(scene.option, k, getattr(arm.option, k))
+        pos, quat = arm_placement(model_name)  # same robot frame as the SO-100
+        scene.worldbody.add_frame(pos=pos, quat=quat).attach_body(arm.body(base), "", "")
+        obj = mujoco.MjSpec.from_file(str(ROOT / "assets" / object_name / f"{object_name}.xml"))
+        height, half = object_setup(object_name)["tag_height"], TAG["size"] / 2 + TAG["margin"]
+        front_id, back_id = object_tags(object_name)
+        for geom, tag_id, side in (("tag", front_id if front_id is not None else TAG["id"], 1),
+                                   ("tag_back", back_id if back_id is not None else BACK_TAG_ID, -1)):
+            obj.add_texture(name=geom, type=mujoco.mjtTexture.mjTEXTURE_2D, file=str(tag_png(tag_id, side < 0)))
+            obj.add_material(name=geom).textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = geom
+            obj.body(object_name).add_geom(name=geom, type=mujoco.mjtGeom.mjGEOM_BOX, size=[half, 0.0003, half],
+                                           pos=[0, front_face_y(obj, object_name, side) + side * 0.0004, height],
+                                           material=geom, contype=0, conaffinity=0, group=2, density=0)
+        self.tag_depth = front_face_y(obj, object_name) - front_face_y(obj, object_name, -1) + 0.0008
+        scene.worldbody.add_frame(pos=[0, -0.22, 0]).attach_body(obj.body(object_name), "", "")
+        e = ENV_CAMERA
+        from lift_env import look_at
+        scene.worldbody.add_camera(name="envcam", pos=e["pos"], fovy=vfov(e["hfov"], e["width"], e["height"]),
+                                   xyaxes=look_at(np.array(e["pos"]), np.array(e["target"])))
+        m = self.model = scene.compile()
+        self.data = mujoco.MjData(m)
+        self.qadr = np.array([m.jnt_qposadr[m.joint(j).id] for j in SIM_JOINTS[model_name].values()])
+        self.obj_body = m.body(object_name).id
+        self.obj_qadr = m.jnt_qposadr[m.body_jntadr[self.obj_body]]
+        self.tag_geom, self.back_tag_geom = m.geom("tag").id, m.geom("tag_back").id
+        self.env_cam = m.camera("envcam").id
+        self.hand = self.hand_model = None
+        mujoco.mj_forward(m, self.data)
+
+
+def calibration_scene(object_name):
+    """The scene for touch calibration and its sim window: the SO-100 training scene, or the same for another arm."""
+    if arm_model() == "so100":
+        return TagLiftEnv(object_name, domain_randomization=False)
+    return ArmScene(object_name, arm_model())
 
 
 class SimView:
@@ -172,9 +221,9 @@ def touch_calibrate(cam, arm, mapping, cfg, object_name="lego_tree", spots=4, fr
     or None if the user quit."""
     ec = cfg["env_camera"]
     K, fovy = camera_intrinsics(ec)
-    sim = TagLiftEnv(object_name, domain_randomization=False)  # the arm's kinematics + the object's thickness
+    sim = view.sim if view is not None else calibration_scene(object_name)  # arm kinematics + object thickness
     depth = sim.tag_depth  # tag ID 0 face to tag ID 1 face
-    tips = [sim.model.geom(g).id for g in ("fixed_jaw_pad_1", "moving_jaw_pad_1")]
+    tips = [sim.model.geom(g).id for g in TIP_GEOMS[arm_model()]]
     front_id, back_id = object_tags(object_name)
     if back_id is None:
         raise SystemExit(f"{object_name} has no tag facing the camera (objects.json -> tags -> back)")
@@ -244,6 +293,8 @@ def touch_calibrate(cam, arm, mapping, cfg, object_name="lego_tree", spots=4, fr
     ec.update(pos=pos.round(4).tolist(), R=R.round(5).tolist(), fovy_used=round(fovy, 2),
               calib_points=dict(world=W.round(5).tolist(), image=I.round(2).tolist(), tag_mm=round(tag_mm, 2)))
     cfg["tag_mm"] = round(tag_mm, 2)
+    if cfg.get("active_arm") in cfg.get("arms", {}):  # measured from this arm's base: kept per arm as well
+        cfg["arms"][cfg["active_arm"]]["env_camera"] = {k: ec[k] for k in ("pos", "R", "fovy_used")}
     CONFIG.write_text(json.dumps(cfg, indent=2))
     cf, cs, ch = ruler(pos)
     print(f"saved: camera {cf * 100:.1f} cm in front of the rotation axis, {cs * 100:+.1f} cm sideways, "
@@ -264,7 +315,7 @@ def live_check(cam, cfg, object_name, view=None, watch=None):
     find = None
     if calibrated and back_id is not None:
         K = intrinsics(ec["fovy_used"], ec["width"], ec["height"])
-        sim = TagLiftEnv(object_name, domain_randomization=False)
+        sim = view.sim if view is not None else calibration_scene(object_name)
         depth = sim.tag_depth
         local = {"front": sim.model.geom_pos[sim.tag_geom].copy(),  # tag centres in the object's frame
                  "back": sim.model.geom_pos[sim.back_tag_geom].copy()}
@@ -360,9 +411,7 @@ def main():
     cfg = json.loads(CONFIG.read_text())
     ec = cfg["env_camera"]
     arm = mapping = None
-    if not args.ruler and not args.track:  # touch calibration measures with the arm: the SO-100 sim's geometry
-        require_arm_model("so100", "touch calibration")
-    if not args.ruler and not (args.track and arm_model() != "so100"):  # the sim arm copies the real one
+    if not args.ruler:  # the arm is read (torque off) so the sim arm copies it
         try:
             arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
             mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
@@ -380,7 +429,11 @@ def main():
     else:
         cam = Camera(camera_indices(cfg)[1] if args.camera is None else args.camera, ec["width"], ec["height"],
                      ec.get("fixed_exposure"))
-    view = SimView(TagLiftEnv(args.object, domain_randomization=False, hand=args.hand, hand_role="to"), arm, mapping)
+    if arm_model() == "so100":
+        sim = TagLiftEnv(args.object, domain_randomization=False, hand=args.hand, hand_role="to")
+    else:  # other arms: their own model (no hand model in this scene: use robot/track.py for the hand)
+        sim = calibration_scene(args.object)
+    view = SimView(sim, arm, mapping)
     try:
         if args.track:
             if "pos" not in ec and not args.hand:

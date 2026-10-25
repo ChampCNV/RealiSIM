@@ -88,9 +88,6 @@ def show(cfg):
         print(f"  unregistered boards plugged in: {', '.join(f'{s} ({plugged[s]})' for s in other)}")
 
 
-ROBOT_XML = {"so101": ("robotstudio_so101/so101.xml", "base"), "so100": ("trs_so_arm100/so_arm100.xml", "Base")}
-
-
 def view(cfg, spacing=0.45, object_name="lego_tree"):
     """Every plugged-in arm in the tree scene (the object in its placement area, the calibrated environment
     camera), copying the real arms (torque off: move them by hand). The first arm stands at the robot origin the
@@ -103,7 +100,7 @@ def view(cfg, spacing=0.45, object_name="lego_tree"):
 
     import sys
     from arm import MAX_POS, SOArm
-    from sim_map import MENAGERIE, SIM_JOINTS, SimMap, load_sim
+    from sim_map import MENAGERIE, ROBOT_XML, SIM_JOINTS, SimMap, arm_placement, load_sim
     sys.path.insert(0, str(CONFIG.parent.parent / "sim2real"))
     from tag_env import DEFAULT_AREA, from_ruler
 
@@ -120,7 +117,8 @@ def view(cfg, spacing=0.45, object_name="lego_tree"):
         child = mujoco.MjSpec.from_file(str(MENAGERIE / xml))
         for k in ("timestep", "iterations", "ls_iterations", "impratio", "integrator", "cone"):
             setattr(spec.option, k, getattr(child.option, k))  # same settings: no attach warnings
-        spec.worldbody.add_frame(pos=[i * spacing, 0, 0]).attach_body(child.body(base), f"{n}_", "")
+        pos, quat = arm_placement(cfg["arms"][n]["model"])  # facing the object like the SO-100 did
+        spec.worldbody.add_frame(pos=pos + [i * spacing, 0, 0], quat=quat).attach_body(child.body(base), f"{n}_", "")
     if object_name:  # standing in the middle of the placement area, facing the robot
         a = DEFAULT_AREA
         obj = mujoco.MjSpec.from_file(str(root / "assets" / object_name / f"{object_name}.xml"))

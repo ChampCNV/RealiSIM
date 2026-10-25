@@ -28,6 +28,35 @@ JOINTS = SIM_JOINTS["so100"]  # the motor names (keys) are the same for every mo
 HALF_TURN, MAX_POS = 2047, 4095
 
 
+ROBOT_XML = {"so101": ("robotstudio_so101/so101.xml", "base"), "so100": ("trs_so_arm100/so_arm100.xml", "Base")}
+# the closed gripper's tip is the mean of these geoms (touch calibration, fingertip distances)
+TIP_GEOMS = {"so100": ["fixed_jaw_pad_1", "moving_jaw_pad_1"],
+             "so101": [f"{jaw}_jaw_sph_tip{i}" for jaw in ("fixed", "moving") for i in (1, 2, 3)]}
+
+
+def arm_placement(model_name):
+    """(pos, quat) to put an arm model into the robot frame every part of this project uses, the SO-100's:
+    reaching straight out along -y at its zero pose, turning about the same vertical axis. From the model
+    itself: its pan axis and where its fingertips point at the middle of every joint's range."""
+    if model_name == "so100":
+        return np.zeros(3), np.array([1.0, 0, 0, 0])
+    ref, axis = {}, {}
+    for name in ("so100", model_name):
+        xml, _ = ROBOT_XML[name]
+        m = mujoco.MjModel.from_xml_path(str(MENAGERIE / xml))
+        d = mujoco.MjData(m)
+        d.qpos[:6] = (m.jnt_range[:6, 0] + m.jnt_range[:6, 1]) / 2
+        mujoco.mj_kinematics(m, d)
+        axis[name] = d.xanchor[0].copy()
+        ref[name] = d.geom_xpos[[m.geom(g).id for g in TIP_GEOMS[name]]].mean(0) - axis[name]
+    turn = np.arctan2(-1.0, 0.0) - np.arctan2(ref[model_name][1], ref[model_name][0])  # its reach -> -y
+    c, s = np.cos(turn), np.sin(turn)
+    R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1.0]])
+    pos = axis["so100"] - R @ axis[model_name]
+    pos[2] = 0.0  # bases on the table
+    return pos, np.array([np.cos(turn / 2), 0, 0, np.sin(turn / 2)])
+
+
 def arm_model():
     """The active arm's model (robot/arms.py; arms set up before that are SO-100s)."""
     cfg = ROOT / "robot" / "config.json"
