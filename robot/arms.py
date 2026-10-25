@@ -115,31 +115,23 @@ def arm_poses(cfg):
     return ref, poses, report
 
 
-def view(cfg, spacing=0.45, object_name="lego_tree"):
-    """Every plugged-in arm in the tree scene (the object in its placement area, the calibrated environment
-    camera), copying the real arms (torque off: move them by hand). The first arm stands at the robot origin the
-    object and camera are measured from, the others `spacing` m further along +x (the first arm's left, seen from
-    behind it) until their real spots are measured. Calibrated arms are copied exactly; uncalibrated ones from
-    their raw motor positions (motor middle = joint middle, as in a standard assembly), enough to see joints move."""
-    import mujoco
-    import mujoco.viewer
-    import numpy as np
-
-    import sys
-    from arm import MAX_POS, SOArm
-    from sim_map import MENAGERIE, ROBOT_XML, SIM_JOINTS, SimMap, arm_placement, load_sim
-    sys.path.insert(0, str(CONFIG.parent.parent / "sim2real"))
-    from tag_env import DEFAULT_AREA, from_ruler
-
-    root = CONFIG.parent.parent
-    plugged = boards()
-    names = [n for n, a in cfg["arms"].items() if a["serial"] in plugged]
+def plugged_arms(cfg):
+    names = [n for n, a in cfg["arms"].items() if a["serial"] in boards()]
     if not names:
         raise SystemExit("no registered arm is plugged in (python robot/arms.py list)")
-    # the single-arm scene's background (sky, checker floor, light): its scene file without the arm in it
+    return names
+
+
+def arms_scene_spec(cfg, names, spacing=0.45):
+    """MjSpec: the single-arm scene's background (sky, checker floor, light) with these arms at their measured
+    spots (arm_poses; placeholders `spacing` m apart if not measured), joints named "<arm>_<joint>". Also returns
+    the reference arm (whose robot frame this is) and its camera calibration."""
+    import mujoco
+    import numpy as np
+    from sim_map import MENAGERIE, ROBOT_XML, arm_placement
     scene = (MENAGERIE / "trs_so_arm100" / "scene.xml").read_text()
     spec = mujoco.MjSpec.from_string(scene.replace('<include file="so_arm100.xml"/>', ""))
-    ref, poses, report = arm_poses(cfg)  # measured spots (camera calibrated with each arm)
+    ref, poses, report = arm_poses(cfg)
     for line in report:
         print("measured:", line)
     for i, n in enumerate(names):
@@ -156,51 +148,84 @@ def view(cfg, spacing=0.45, object_name="lego_tree"):
         pos = shift + np.array([[c, -s_, 0], [s_, c, 0], [0, 0, 1.0]]) @ pos
         spec.worldbody.add_frame(pos=pos, quat=[np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)]).attach_body(
             child.body(base), f"{n}_", "")
-    if object_name:  # standing in the middle of the placement area, facing the robot
-        a = DEFAULT_AREA
-        obj = mujoco.MjSpec.from_file(str(root / "assets" / object_name / f"{object_name}.xml"))
-        spec.worldbody.add_frame(pos=from_ruler((a["front_min"] + a["front_max"]) / 2, 0.0, 0.0)).attach_body(
-            obj.body(object_name), "", "")
     ec = (cfg["arms"][ref].get("env_camera") if ref else None) or cfg.get("env_camera") or {}
-    if "pos" in ec:  # where the calibrated environment camera stands
-        q = np.zeros(4)
-        mujoco.mju_mat2Quat(q, (np.array(ec["R"]) @ np.diag([1, -1, -1])).ravel())  # OpenCV -> MuJoCo axes
-        spec.worldbody.add_camera(name="envcam", pos=ec["pos"], quat=q, fovy=ec["fovy_used"])
-    model = spec.compile()
-    data = mujoco.MjData(model)
-    arms = []
+    return spec, ref, ec
+
+
+def connect_arms(cfg, names, model):
+    """Each arm connected (torque off) with what is needed to copy it into `model`: list of dicts."""
+    import numpy as np
+    from arm import SOArm
+    from sim_map import SIM_JOINTS, SimMap, load_sim
+    root, plugged, arms = CONFIG.parent.parent, boards(), []
     for n in names:
         a = cfg["arms"][n]
         arm = SOArm(plugged[a["serial"]], root / a["calibration"], cfg["baudrate"], serial=a["serial"])
         arm.connect()
         arm.torque(False)
         joints = SIM_JOINTS[a["model"]]
-        qadr = [model.jnt_qposadr[model.joint(f"{n}_{joints[m]}").id] for m in joints]
         mapping = SimMap(root / a["sim_mapping"], arm.calibration) if arm.calibration else None
         if mapping is not None and not mapping.ready:
             mapping = None
         sim, _ = load_sim(a["model"])
-        middle = (sim.jnt_range[:6, 0] + sim.jnt_range[:6, 1]) / 2
-        arms.append((n, arm, joints, qadr, mapping, middle))
+        arms.append(dict(name=n, arm=arm, joints=joints, mapping=mapping,
+                         qadr=[model.jnt_qposadr[model.joint(f"{n}_{joints[m]}").id] for m in joints],
+                         middle=(sim.jnt_range[:6, 0] + sim.jnt_range[:6, 1]) / 2))
         print(f"{n}: {'calibrated: copied exactly' if mapping else 'NOT calibrated: raw motor positions'}")
-    print("both arms are limp now (torque off): move them by hand, watch the sim. Close the sim window to stop.")
+    return arms
+
+
+def copy_arms(arms, data):
+    """Every connected arm's joint angles into the sim (calibrated: exactly; else raw motor positions)."""
+    import numpy as np
+    from arm import MAX_POS
+    for a in arms:
+        if a["mapping"] is not None:
+            q = a["mapping"].to_sim(a["arm"].read_degrees())
+        else:
+            raw = a["arm"].read_raw()
+            q = a["middle"] + np.radians([(raw[m] - MAX_POS / 2) * 360 / (MAX_POS + 1) for m in a["joints"]])
+        data.qpos[a["qadr"]] = q
+
+
+def view(cfg, spacing=0.45, object_name="lego_tree"):
+    """Every plugged-in arm in the tree scene (the object in its placement area, the calibrated environment
+    camera), copying the real arms (torque off: move them by hand), each at its measured spot.
+    For live object tracking with the arms: python photo2grasp.py track <object>."""
+    import mujoco
+    import mujoco.viewer
+    import numpy as np
+
+    import sys
+    sys.path.insert(0, str(CONFIG.parent.parent / "sim2real"))
+    from tag_env import DEFAULT_AREA, from_ruler
+
+    names = plugged_arms(cfg)
+    spec, ref, ec = arms_scene_spec(cfg, names, spacing)
+    if object_name:  # standing in the middle of the placement area, facing the robot
+        a = DEFAULT_AREA
+        obj = mujoco.MjSpec.from_file(str(CONFIG.parent.parent / "assets" / object_name / f"{object_name}.xml"))
+        spec.worldbody.add_frame(pos=from_ruler((a["front_min"] + a["front_max"]) / 2, 0.0, 0.0)).attach_body(
+            obj.body(object_name), "", "")
+    if "pos" in ec:  # where the calibrated environment camera stands
+        q = np.zeros(4)
+        mujoco.mju_mat2Quat(q, (np.array(ec["R"]) @ np.diag([1, -1, -1])).ravel())  # OpenCV -> MuJoCo axes
+        spec.worldbody.add_camera(name="envcam", pos=ec["pos"], quat=q, fovy=ec["fovy_used"])
+    model = spec.compile()
+    data = mujoco.MjData(model)
+    arms = connect_arms(cfg, names, model)
+    print("the arms are limp now (torque off): move them by hand, watch the sim. Close the sim window to stop.")
     try:
         with mujoco.viewer.launch_passive(model, data) as viewer:
             viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CAMERA] = 1  # draw the environment camera
             while viewer.is_running():
-                for n, arm, joints, qadr, mapping, middle in arms:
-                    if mapping is not None:
-                        q = mapping.to_sim(arm.read_degrees())
-                    else:
-                        raw = arm.read_raw()
-                        q = middle + np.radians([(raw[m] - MAX_POS / 2) * 360 / (MAX_POS + 1) for m in joints])
-                    data.qpos[qadr] = q
+                copy_arms(arms, data)
                 mujoco.mj_kinematics(model, data)
                 viewer.sync()
                 time.sleep(0.03)
     finally:
-        for _, arm, *_ in arms:
-            arm.disconnect(torque_off=True)
+        for a in arms:
+            a["arm"].disconnect(torque_off=True)
 
 
 def identify(cfg, seconds=20):

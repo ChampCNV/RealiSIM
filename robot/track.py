@@ -68,12 +68,18 @@ def tagged_objects(names, skip_clashes=False):
 class Scene:
     """SO-100 + the objects (with their tags drawn) [+ the hand], every object a free body moved by code."""
 
-    def __init__(self, names, hand=None, skip_clashes=False, env_camera=None):
+    def __init__(self, names, hand=None, skip_clashes=False, env_camera=None, arms=None):
+        """arms: None = the SO-100 scene; or (cfg, arm names) = those arms (robot/arms.py) at their measured
+        spots, in the reference arm's robot frame (env_camera must then be that arm's calibration)."""
         self.tags = tagged_objects(names, skip_clashes)
         self.names = names = list(self.tags)
-        scene = mujoco.MjSpec.from_file(str(ARM_SCENE))
-        for key in list(scene.keys):  # keyframes would need every object's pose
-            scene.delete(key)
+        if arms:
+            from arms import arms_scene_spec
+            scene, _, _ = arms_scene_spec(*arms)
+        else:
+            scene = mujoco.MjSpec.from_file(str(ARM_SCENE))
+            for key in list(scene.keys):  # keyframes would need every object's pose
+                scene.delete(key)
         half = TAG["size"] / 2 + TAG["margin"]
         self.local, self.depth = {}, {}  # tag centres in each object's frame; front-to-back distance
         for i, n in enumerate(names):
@@ -103,8 +109,9 @@ class Scene:
         self.model.opt.gravity[:] = 0  # moved by code only
         m = self.model
         self.data = mujoco.MjData(m)
-        self.qadr = np.array([m.jnt_qposadr[m.joint(j).id] for j in ARM_JOINTS])
-        self.data.qpos[self.qadr] = (m.jnt_range[:6, 0] + m.jnt_range[:6, 1]) / 2  # zero pose
+        if not arms:
+            self.qadr = np.array([m.jnt_qposadr[m.joint(j).id] for j in ARM_JOINTS])
+            self.data.qpos[self.qadr] = (m.jnt_range[:6, 0] + m.jnt_range[:6, 1]) / 2  # zero pose
         self.obj_qadr = {n: m.jnt_qposadr[m.body(n).jntadr[0]] for n in names}
         self.geoms = {n: [g for g in range(m.ngeom) if m.geom_bodyid[g] == m.body(n).id and m.geom_contype[g]]
                       for n in names}
@@ -209,22 +216,37 @@ def main():
     if not names:
         raise SystemExit("give object names, or --all")
     hand = "stick" if args.hand == "stick" else load_hand(args.hand) if args.hand else None
-    scene = Scene(names, hand, skip_clashes=args.all, env_camera=cfg["env_camera"])
+    from sim_map import arm_model
+    two_arm = arm_model() != "so100" and bool(cfg.get("arms"))
+    if two_arm:  # the registered (SO-101) arms at their measured spots, in the reference arm's frame
+        from arms import arm_poses, plugged_arms
+        arm_names = plugged_arms(cfg)
+        ref = arm_poses(cfg)[0]
+        if ref is None:
+            raise SystemExit("calibrate the environment camera with the arm first: "
+                             "python photo2grasp.py calibrate <object>")
+        cfg["env_camera"] = dict(cfg["env_camera"], **cfg["arms"][ref]["env_camera"])  # seen from the reference arm
+        scene = Scene(names, hand, skip_clashes=args.all, env_camera=cfg["env_camera"], arms=(cfg, arm_names))
+    else:
+        scene = Scene(names, hand, skip_clashes=args.all, env_camera=cfg["env_camera"])
     print("tracking:", ", ".join(f"{n} (tags {scene.tags[n][0]}/{scene.tags[n][1]})" for n in names))
 
     arm = mapping = None
-    try:  # optional: the sim arm copies the real one (torque off)
-        from arm import SOArm
-        from sim_map import SimMap, arm_model
-        if arm_model() != "so100":
-            raise RuntimeError(f"the active arm is an {arm_model().upper()}, this sim shows the SO-100")
-        arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
-        mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
-        arm.connect()
-        arm.torque(False)
-    except Exception as e:
-        print(f"arm not connected ({e}): the sim arm stays at zero")
-        arm = None
+    arms = []  # the sim arm(s) copy the real one(s), torque off
+    if two_arm:
+        from arms import connect_arms
+        arms = connect_arms(cfg, arm_names, scene.model)
+    else:
+        try:  # optional
+            from arm import SOArm
+            from sim_map import SimMap
+            arm = SOArm(cfg["port"], ROOT / cfg["calibration"], cfg["baudrate"])
+            mapping = SimMap(ROOT / cfg["sim_mapping"], arm.calibration)
+            arm.connect()
+            arm.torque(False)
+        except Exception as e:
+            print(f"arm not connected ({e}): the sim arm stays still")
+            arm = None
     ec = cfg["env_camera"]
     if args.video:
         cam = VideoFile(args.video)
@@ -273,6 +295,9 @@ def main():
                         scene.stick.lift_out(scene.data, scene.obj_qadr[n], scene.geoms[n])
             if arm is not None:
                 scene.data.qpos[scene.qadr] = mapping.to_sim(arm.read_degrees())
+            if arms:
+                from arms import copy_arms
+                copy_arms(arms, scene.data)
             mujoco.mj_forward(scene.model, scene.data)
             viewer.sync()
             for i, text in enumerate(lines):
@@ -290,6 +315,8 @@ def main():
         cv2.destroyAllWindows()
         if arm is not None:
             arm.disconnect(torque_off=True)
+        for a in arms:
+            a["arm"].disconnect(torque_off=True)
 
 
 if __name__ == "__main__":
