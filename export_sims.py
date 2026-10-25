@@ -271,7 +271,7 @@ def open_package(path, use_arms=True, use_camera=True):
         try:
             from camera import Camera, camera_indices
             hw = json.loads(CONFIG.read_text())
-            cam = Camera(camera_indices(hw)[1], ec["width"], ec["height"], ec.get("fixed_exposure"))
+            cam = Camera(camera_indices(hw, need_wrist=False)[1], ec["width"], ec["height"], ec.get("fixed_exposure"))
             h, w = cam.read().shape[:2]
             roll = {scene.names[0]: params["object"]["objects_json"].get("tag_roll_deg") or {}}
             roll[scene.names[0]] = {k: roll[scene.names[0]].get(k) for k in ("front", "back")}

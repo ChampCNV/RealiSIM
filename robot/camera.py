@@ -56,13 +56,28 @@ class Camera:
         self.cap.release()
 
 
-def camera_indices(cfg):
+def camera_indices(cfg, need_wrist=True):
     """(wrist, environment) camera indices from robot/config.json, corrected when Windows renumbered them after
     re-plugging: a configured camera that is missing becomes the only other camera found. The environment index
-    is None when none is configured. Stops with a message if it cannot tell which camera is which."""
+    is None when none is configured. Stops with a message if it cannot tell which camera is which.
+    need_wrist=False (environment camera only): no wrist camera is looked for (returned as None), and a single
+    connected camera is the environment camera, whatever its number."""
     found = list_cameras()
     wrist = cfg["wrist_camera"]["index"]
     env = (cfg.get("env_camera") or {}).get("index")
+    if not need_wrist:
+        if len(found) == 1:
+            if found[0] != env:
+                print(f"one camera connected (number {found[0]}): used as the environment camera")
+            return None, found[0]
+        if env in found:
+            return None, env
+        rest = [i for i in found if i != wrist]
+        if len(rest) == 1:
+            print(f"environment camera {env} not found: using camera {rest[0]} (the one that is not the wrist's)")
+            return None, rest[0]
+        raise SystemExit(f"environment camera {env} not found (cameras found: {found}): set the right index in "
+                         f"robot/config.json (env_camera), or unplug the other cameras")
     names = {"wrist": wrist, "environment": env}
     for name, other in (("environment", "wrist"), ("wrist", "environment")):
         if names[name] is None or names[name] in found:

@@ -444,7 +444,7 @@ def main():
     elif args.depth:
         cam = RealSense(ec["width"], ec["height"])
     else:
-        cam = Camera(camera_indices(cfg)[1] if args.camera is None else args.camera, ec["width"], ec["height"],
+        cam = Camera(camera_indices(cfg, need_wrist=False)[1] if args.camera is None else args.camera, ec["width"], ec["height"],
                      ec.get("fixed_exposure"))
     if arm_model() == "so100":
         sim = TagLiftEnv(args.object, domain_randomization=False, hand=args.hand, hand_role="to")

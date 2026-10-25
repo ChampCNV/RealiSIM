@@ -176,8 +176,8 @@ def main():
         sys.exit("The arm is not calibrated yet: python photo2grasp.py robot")
     cc, web = cfg["wrist_camera"], ck["webcam"]
     wrist_fovy = cc.get("vertical_fov_deg") or vfov(web["hfov"], web["width"], web["height"])
-    index, env_index = camera_indices(cfg)
-    cam = Camera(index, web["width"], web["height"], cc.get("fixed_exposure"))
+    index, env_index = camera_indices(cfg, need_wrist=not args.env_only)  # --env-only: no wrist camera needed
+    cam = Camera(index, web["width"], web["height"], cc.get("fixed_exposure")) if index is not None else None
     ec = cfg.get("env_camera")
     env_cam = Camera(env_index, ec["width"], ec["height"], ec.get("fixed_exposure")) \
         if ec and "env_camera" in ck else None
@@ -192,6 +192,8 @@ def main():
         sys.exit("--env-only needs the environment camera (robot/config.json env_camera)")
 
     def read_wrist():
+        if cam is None:
+            return None, None
         frame = cv2.cvtColor(cam.read(), cv2.COLOR_RGB2BGR)
         return None if args.env_only else frame, frame  # (what the tracker gets, what the window shows)
 
@@ -395,6 +397,10 @@ def main():
                               "" if seen["drift"] is None else round(seen["drift"], 4), int(hold),
                               seen["orientation"][0] if seen["orientation"] else "", *np.round(action, 3)])
                 # live view: detection + what the policy is told
+                if env_frame is not None and seen["env_corners"] is not None:
+                    cv2.polylines(env_frame, [seen["env_corners"].astype(int)], True, (0, 255, 0), 3)
+                if frame is None:  # no wrist camera: the environment camera's view carries the text
+                    frame = env_frame
                 if seen["wrist_corners"] is not None:
                     cv2.polylines(frame, [seen["wrist_corners"].astype(int)], True, (0, 255, 0), 3)
                 f, sd, h = ruler(state[12:15])
@@ -409,9 +415,7 @@ def main():
                     colour = (0, 0, 255) if t.startswith("CAMERAS") else (0, 255, 255)
                     cv2.putText(frame, t, (14, 40 + 38 * i), cv2.FONT_HERSHEY_SIMPLEX, 1.0, colour, 2, cv2.LINE_AA)
                 view = cv2.resize(frame, (960, 540))
-                if env_frame is not None:
-                    if seen["env_corners"] is not None:
-                        cv2.polylines(env_frame, [seen["env_corners"].astype(int)], True, (0, 255, 0), 3)
+                if env_frame is not None and frame is not env_frame:
                     view = np.hstack([view, cv2.resize(env_frame, (960, 540))])
                 cv2.imshow("wrist | environment camera - AprilTag policy (Esc ends the attempt)", view)
                 if cv2.waitKey(1) == 27:
@@ -437,7 +441,8 @@ def main():
             mover.current = mapping.to_sim(arm.read_degrees())
             move(rest_pose)
         arm.disconnect(torque_off=True)
-        cam.close()
+        if cam is not None:
+            cam.close()
         if env_cam:
             env_cam.close()
         cv2.destroyAllWindows()
