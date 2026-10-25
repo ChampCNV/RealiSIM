@@ -13,6 +13,7 @@ from pathlib import Path
 
 import scservo_sdk as scs
 
+CONFIG = Path(__file__).parent / "config.json"
 MOTORS = {"shoulder_pan": 1, "shoulder_lift": 2, "elbow_flex": 3, "wrist_flex": 4, "wrist_roll": 5, "gripper": 6}
 FULL_TURN_MOTORS = ["wrist_roll"]  # can spin freely, gets the whole encoder range
 RESOLUTION = 4096  # 12-bit encoder
@@ -80,10 +81,16 @@ class SOArm:
     # ── connection ─────────────────────────────────────────────────────────
     def connect(self):
         from serial.tools import list_ports
-        ports = [p.device for p in list_ports.comports()]
-        if self.port not in ports and len(ports) == 1:  # Windows renumbers the board after re-plugging
-            print(f"{self.port} not found, using the only serial port {ports[0]} (robot/config.json \"port\")")
-            self.port = ports[0]
+        ports = {p.device: p.serial_number for p in list_ports.comports()}
+        serial = json.loads(CONFIG.read_text()).get("serial") if CONFIG.exists() else None  # the active arm's board
+        if serial and ports.get(self.port) != serial:  # Windows renumbers boards after re-plugging: find it by serial
+            match = [dev for dev, s in ports.items() if s == serial]
+            if not match:
+                raise ConnectionError(f"the arm's board (USB serial {serial}) is not plugged in (ports: {ports})")
+            self.port = match[0]
+        elif self.port not in ports and len(ports) == 1:
+            print(f"{self.port} not found, using the only serial port {next(iter(ports))} (robot/config.json \"port\")")
+            self.port = next(iter(ports))
         self.port_h = scs.PortHandler(self.port)
         self.packet = scs.PacketHandler(0)  # STS series: little-endian protocol
         if not self.port_h.openPort() or not self.port_h.setBaudRate(self.baudrate):
