@@ -130,6 +130,8 @@ class ArmScene:
         self.qadr = np.array([m.jnt_qposadr[m.joint(j).id] for j in SIM_JOINTS[model_name].values()])
         self.obj_body = m.body(object_name).id
         self.obj_qadr = m.jnt_qposadr[m.body_jntadr[self.obj_body]]
+        self.obj_geoms = np.where(m.geom_bodyid == self.obj_body)[0]
+        self.obj_collision = np.array([g for g in self.obj_geoms if m.geom_contype[g]])
         self.tag_geom, self.back_tag_geom = m.geom("tag").id, m.geom("tag_back").id
         self.env_cam = m.camera("envcam").id
         self.hand = self.hand_model = None
@@ -288,8 +290,23 @@ def touch_calibrate(cam, arm, mapping, cfg, object_name="lego_tree", spots=4, fr
                   f"height {h * 100:.1f} cm")
         image_pts.append(np.mean(captured, 0))
 
+    spread = max(np.linalg.norm(a - b) for a in centres for b in centres)
+    if spread < 0.04:  # the touched spots must be spread out, or the arm being read did not move
+        print(f"NOT saved: the {len(centres)} touched spots are only {spread * 100:.1f} cm apart. Touch with the ACTIVE "
+              f"arm ({cfg.get('active_arm', 'the configured one')}: robot/arms.py list) and move the object between "
+              f"spots (near, far, left, right).")
+        if own_view:
+            view.close()
+        return None
     tag_mm = cfg.get("tag_mm", TAG["size"] * 1000)
-    pos, R, tag_mm, err_mm, W, I = solve_camera(centres, image_pts, K, tag_mm, fit_size=ruler_spots is None)
+    pos, R, fitted_mm, err_mm, W, I = solve_camera(centres, image_pts, K, tag_mm, fit_size=ruler_spots is None)
+    if not 0.7 < fitted_mm / tag_mm < 1.4 or err_mm > 30:  # a real print is never that far off
+        print(f"NOT saved: the result makes no sense (printed tag {fitted_mm:.0f} mm, fit error {err_mm:.0f} mm). "
+              f"Was the tip exactly on the tag centre at every spot, with the active arm?")
+        if own_view:
+            view.close()
+        return None
+    tag_mm = fitted_mm
     ec.update(pos=pos.round(4).tolist(), R=R.round(5).tolist(), fovy_used=round(fovy, 2),
               calib_points=dict(world=W.round(5).tolist(), image=I.round(2).tolist(), tag_mm=round(tag_mm, 2)))
     cfg["tag_mm"] = round(tag_mm, 2)
