@@ -1,6 +1,6 @@
 {
   "name": "tree_pick",
-  "exported": "2026-10-24 19:15",
+  "exported": "2026-10-24 20:01",
   "mujoco": "3.16.0",
   "about": "SO-100 + lego_tree, trained model tag_envcam_2250k",
   "kind": "pick",
@@ -362,7 +362,7 @@
         "tag_mm": 27.61
       }
     },
-    "tag_mm": 23.71,
+    "tag_mm": 25.72,
     "wrist_camera": {
       "index": 1,
       "width": 1280,
