@@ -1,6 +1,6 @@
 {
   "name": "two_arms",
-  "exported": "2026-10-24 19:10",
+  "exported": "2026-10-24 19:15",
   "mujoco": "3.16.0",
   "about": "left (so101), right (so101) at their measured spots, lego_tree, the calibrated camera",
   "kind": "two_arms",

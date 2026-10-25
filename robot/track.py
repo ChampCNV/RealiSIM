@@ -139,7 +139,9 @@ class Scene:
 class Tracker:
     """Camera frame -> every object's pose (robot frame) from its tags, same maths as tracking one object."""
 
-    def __init__(self, scene, cfg, width, height):
+    def __init__(self, scene, cfg, width, height, roll=None):
+        """roll: how the objects' tags are glued ({name: {"front", "back"}}) to use instead of objects.json; then
+        nothing is written to objects.json (a package's own settings)."""
         ec = cfg["env_camera"]
         if "pos" not in ec:
             raise SystemExit("environment camera not calibrated yet: python photo2grasp.py calibrate <object>")
@@ -149,7 +151,8 @@ class Tracker:
         self.pts = np.array([[-s, s, 0], [s, s, 0], [s, -s, 0], [-s, -s, 0]], np.float32)  # OpenCV corner order
         self.detector = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(TAG["dictionary"]),
                                                 cv2.aruco.DetectorParameters())
-        self.roll = {n: tag_roll(n) for n in scene.names}
+        self.persist = roll is None
+        self.roll = {n: dict(roll[n]) for n in scene.names} if roll else {n: tag_roll(n) for n in scene.names}
         self.last_seen = {n: -1e9 for n in scene.names}
         self.tag_rotations = {}  # this frame: {(name, side): tag rotation}, for "u"
 
@@ -169,8 +172,7 @@ class Tracker:
                         seen[side] = (self.R @ cv2.Rodrigues(rv)[0], self.pos + self.R @ tv.ravel())
                         self.tag_rotations[(n, side)] = seen[side][0]
             for side in [s for s in seen if self.roll[n][s] is None]:  # first sight: assume it stands, glued square
-                save_tag_roll(n, side, 90 * round(measured_roll(seen[side][0]) / 90))
-                self.roll[n] = tag_roll(n)
+                self.keep_roll(n, side, 90 * round(measured_roll(seen[side][0]) / 90))
                 print(f"{n}: orientation set up from its {side} tag, assuming it stands upright now (u measures it)")
             if seen:
                 side = next(iter(seen))
@@ -192,9 +194,16 @@ class Tracker:
         if not self.tag_rotations:
             print("u: no object tag in view")
         for (n, side), R_tag in self.tag_rotations.items():
-            save_tag_roll(n, side, measured_roll(R_tag))
-            print(f"saved: {n}'s {side} tag is glued turned {measured_roll(R_tag):.0f} deg")
-            self.roll[n] = tag_roll(n)
+            self.keep_roll(n, side, measured_roll(R_tag))
+            print(f"{'saved' if self.persist else 'using'}: {n}'s {side} tag is glued turned "
+                  f"{measured_roll(R_tag):.0f} deg")
+
+    def keep_roll(self, name, side, deg):
+        if self.persist:
+            save_tag_roll(name, side, deg)
+            self.roll[name] = tag_roll(name)
+        else:
+            self.roll[name][side] = deg
 
 
 def main():

@@ -19,6 +19,8 @@
     python photo2grasp.py test runs/<run>/actor_last.pt [--to-hand my_hand]     # 5. sim test + preview
     python photo2grasp.py run runs/<run>/actor_last.pt [--env-only] [--dry-run] # 6. real robot
     python photo2grasp.py run runs/<run>/actor_last.pt --to-hand my_hand        #    then put it on your palm
+    python photo2grasp.py sim                                                   # saved sims (export_sims.py)
+    python photo2grasp.py sim two_arms [--static]                               #    open one: live arms/object
 
 Each step can also be run on its own (the scripts it calls are listed in README.md). Robot setup is not a step
 of its own every time: "run" and "calibrate" check that the arm is set up and only then ask.
@@ -374,6 +376,10 @@ def main():
     rm.add_argument("--models", action="store_true", help="also delete its trained models in runs/")
     rm.add_argument("--purge", action="store_true",
                     help="also delete its saved mesh / the saved hand (then it cannot be added back)")
+    sm = sub.add_parser("sim", help="saved sim packages: list them, or open one (live arms/object if connected)")
+    sm.add_argument("name", nargs="?", help="sims/<name>; none = list")
+    sm.add_argument("--static", action="store_true", help="no arms, no camera: just look at it")
+    sm.add_argument("--export", action="store_true", help="save fresh packages first (export_sims.py)")
     lk = sub.add_parser("look", help="give an object the textured look of another asset of the same object")
     lk.add_argument("name")
     lk.add_argument("--from", dest="source", required=True, help="the asset whose visual mesh + texture to use")
@@ -447,6 +453,16 @@ def main():
             remove_hand(rest[0], args.purge)
         else:
             remove_object(rest[0], args.models, args.purge)
+    elif args.step == "sim":
+        if args.export or not (ROOT / "sims").exists():
+            call("export_sims.py")
+        if not args.name:
+            for params in sorted((ROOT / "sims").glob("*/params.json")):
+                about = json.loads(params.read_text())
+                print(f"{params.parent.name:12s} {about['about']} (exported {about['exported']})")
+            print("open one: python photo2grasp.py sim <name> [--static]")
+        else:
+            call("export_sims.py", "--open", ROOT / "sims" / args.name, *(["--static"] if args.static else []))
     elif args.step == "look":
         copy_look(args.name, args.source)
         print(f"next: python photo2grasp.py check {args.name}")

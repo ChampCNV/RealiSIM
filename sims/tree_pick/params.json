@@ -1,6 +1,6 @@
 {
   "name": "tree_pick",
-  "exported": "2026-10-24 19:10",
+  "exported": "2026-10-24 19:15",
   "mujoco": "3.16.0",
   "about": "SO-100 + lego_tree, trained model tag_envcam_2250k",
   "kind": "pick",

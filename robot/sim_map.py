@@ -83,9 +83,10 @@ def sim_pose(model, key):
 
 
 class SimMap:
-    def __init__(self, path, calibration=None):
+    def __init__(self, path, calibration=None, model_name=None):
+        """model_name: the arm's model (default: the active arm's)."""
         self.path = Path(path)
-        model, _ = load_sim()
+        model, _ = load_sim(model_name)
         self.middle = (model.jnt_range[:6, 0] + model.jnt_range[:6, 1]) / 2
         self.span_deg = dict(zip(JOINTS, np.degrees(model.jnt_range[:6, 1] - model.jnt_range[:6, 0])))
         data = json.loads(self.path.read_text()) if self.path.exists() else {}

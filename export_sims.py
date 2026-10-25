@@ -2,6 +2,8 @@
 
     python export_sims.py                              # sims/tree_pick/, sims/can_pick/, sims/two_arms/
     python -m mujoco.viewer --mjcf sims/tree_pick/scene.mjb
+    python export_sims.py --open sims/two_arms         # live: real arms + object move it, else static
+    python export_sims.py --open sims/tree_pick --static   # just look at it
     python export_sims.py --load sims/tree_pick        # put a package back into this project
     python export_sims.py --load sims/two_arms --calibration   # ... including the robot/camera calibration
 
@@ -16,6 +18,10 @@ A package (sims/<name>/):
   calibration/    the arms' calibration files, for the two-arm sim
 Training builds the scene fresh every episode (random placement, lighting, cameras); a trained model drives it
 with sim2real/view_tag_env.py <package>/model/actor_last.pt.
+--open runs a package with ITS OWN settings (calibration, arm spots, camera, tags), whatever is connected:
+every arm of the package whose USB board is plugged in copies the real arm (torque off), the object follows its
+tags if the environment camera opens; without them they stay still (static scene). The project's files are not
+changed.
 --load copies the asset (if missing), the object's objects.json entry and the model (runs/<package name>) into
 this project; --calibration also restores the camera and arm calibration (robot/config.json is backed up first).
 """
@@ -105,6 +111,22 @@ def pick_package(name, run):
     return write_package(name, env.model, env.data.qpos.copy(), params, copies)
 
 
+def add_tags(obj, name):
+    """The object's tags drawn on it (geoms "tag" / "tag_back", as in the training scene): tracking a package
+    reads where they sit on the object from them."""
+    from lift_env import front_face_y
+    from tag_env import BACK_TAG_ID, TAG, object_setup, object_tags, tag_png
+    height, half = object_setup(name)["tag_height"], TAG["size"] / 2 + TAG["margin"]
+    front_id, back_id = object_tags(name)
+    for geom, tag_id, side in (("tag", TAG["id"] if front_id is None else front_id, 1),
+                               ("tag_back", BACK_TAG_ID if back_id is None else back_id, -1)):
+        obj.add_texture(name=geom, type=mujoco.mjtTexture.mjTEXTURE_2D, file=str(tag_png(tag_id, side < 0)))
+        obj.add_material(name=geom).textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = geom
+        obj.body(name).add_geom(name=geom, type=mujoco.mjtGeom.mjGEOM_BOX, size=[half, 0.0003, half],
+                                pos=[0, front_face_y(obj, name, side) + side * 0.0004, height], material=geom,
+                                contype=0, conaffinity=0, group=2, density=0)
+
+
 def two_arm_package(object_name="lego_tree"):
     """The registered arms at their measured spots, the object, the calibrated camera (robot/arms.py)."""
     from arms import arm_poses, arms_scene_spec, load
@@ -115,6 +137,7 @@ def two_arm_package(object_name="lego_tree"):
     spec, ref, ec = arms_scene_spec(cfg, list(cfg["arms"]))
     a = DEFAULT_AREA
     obj = mujoco.MjSpec.from_file(str(ROOT / "assets" / object_name / f"{object_name}.xml"))
+    add_tags(obj, object_name)
     spec.worldbody.add_frame(pos=from_ruler((a["front_min"] + a["front_max"]) / 2, 0.0, 0.0)).attach_body(
         obj.body(object_name), "", "")
     if "pos" in ec:
@@ -186,11 +209,118 @@ def load_package(path, with_calibration=False):
         print(f"calibration restored (previous config: {backup.relative_to(ROOT)})")
 
 
+class PackageScene:
+    """A package's scene with what tracking needs (track.Tracker): its object, where its tags sit on it."""
+
+    def __init__(self, pkg, params):
+        import track
+        self.model = m = mujoco.MjModel.from_binary_path(str(pkg / "scene.mjb"))
+        self.data = mujoco.MjData(m)
+        mujoco.mj_resetData(m, self.data)  # the start pose
+        n = params["object"]["name"]
+        tags = params["object"]["objects_json"].get("tags") or {"front": 0, "back": 1}
+        self.names, self.tags = [n], {n: (tags.get("front"), tags.get("back"))}
+        self.local = {n: {"front": m.geom_pos[m.geom("tag").id].copy(),  # tag centres on the object
+                          "back": m.geom_pos[m.geom("tag_back").id].copy()}}
+        body = m.body(n).id
+        self.obj_qadr = {n: m.jnt_qposadr[m.body_jntadr[body]]}
+        self.geoms = {n: [g for g in range(m.ngeom) if m.geom_bodyid[g] == body and m.geom_contype[g]]}
+        self.hand = self.stick = None
+        self._place = track.Scene.place
+
+    def place(self, name, origin, R):
+        self._place(self, name, origin, R)
+
+
+def package_arms(pkg, params, model):
+    """The package's arms whose boards are plugged in, connected (torque off) with the package's calibration."""
+    from arm import SOArm
+    from arms import boards
+    from sim_map import SIM_JOINTS, SimMap
+    plugged, arms = boards(), []
+    for n, a in (params.get("arms") or {}).items():
+        if a["serial"] not in plugged:
+            print(f"{n}: board {a['serial']} not plugged in: stays still")
+            continue
+        arm = SOArm(plugged[a["serial"]], pkg / a["calibration"], 1_000_000, serial=a["serial"])
+        arm.connect()
+        arm.torque(False)
+        joints = SIM_JOINTS[a["model"]]
+        arms.append(dict(name=n, arm=arm, mapping=SimMap(pkg / a["sim_mapping"], arm.calibration, a["model"]),
+                         qadr=[model.jnt_qposadr[model.joint(f"{n}_{joints[m]}").id] for m in joints]))
+        print(f"{n}: copying the real arm (limp, torque off)")
+    return arms
+
+
+def open_package(path, use_arms=True, use_camera=True):
+    import cv2
+    import mujoco.viewer
+    from track import Tracker
+    pkg = Path(path)
+    params = json.loads((pkg / "params.json").read_text())
+    scene = PackageScene(pkg, params)
+    m, d = scene.model, scene.data
+    print(f"{params['name']}: {params['about']}")
+    arms = package_arms(pkg, params, m) if use_arms else []
+    if params["kind"] == "pick" and use_arms:
+        print("SO-100 arm: not part of the arm registry (robot/arms.py): shown still in its start pose")
+    camera = (params.get("camera") or params.get("real_setup") or {})
+    ec = dict(camera.get("env_camera") or {})
+    cam = track = None
+    if use_camera and "pos" in ec:
+        try:
+            from camera import Camera, camera_indices
+            hw = json.loads(CONFIG.read_text())
+            cam = Camera(camera_indices(hw)[1], ec["width"], ec["height"], ec.get("fixed_exposure"))
+            h, w = cam.read().shape[:2]
+            roll = {scene.names[0]: params["object"]["objects_json"].get("tag_roll_deg") or {}}
+            roll[scene.names[0]] = {k: roll[scene.names[0]].get(k) for k in ("front", "back")}
+            track = Tracker(scene, dict(env_camera=ec, tag_mm=camera.get("tag_mm")), w, h, roll=roll)
+            print(f"{scene.names[0]}: following its tags in the environment camera (u = it stands upright now)")
+        except (Exception, SystemExit) as e:
+            print(f"environment camera not available ({e}): the object stays still")
+            cam = None
+    if not arms and cam is None:
+        print("static scene (no arm or camera connected)")
+    try:
+        with mujoco.viewer.launch_passive(m, d) as viewer:
+            viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CAMERA] = 1
+            while viewer.is_running():
+                for a in arms:
+                    d.qpos[a["qadr"]] = a["mapping"].to_sim(a["arm"].read_degrees())
+                if cam is not None:
+                    frame = cv2.cvtColor(cam.read(), cv2.COLOR_RGB2BGR)
+                    lines = list(track(frame, time.time()).values())
+                    for i, text in enumerate(lines):
+                        cv2.putText(frame, text, (14, 40 + 40 * i), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2)
+                    cv2.imshow(f"{params['name']}: environment camera (u upright, q quits)",
+                               cv2.resize(frame, (960, int(960 * frame.shape[0] / frame.shape[1]))))
+                    key = cv2.waitKey(1) & 0xFF
+                    if key == ord("u"):
+                        track.set_upright()
+                    if key == ord("q"):
+                        break
+                else:
+                    time.sleep(0.03)
+                mujoco.mj_forward(m, d)
+                viewer.sync()
+    finally:
+        for a in arms:
+            a["arm"].disconnect(torque_off=True)
+        if cam is not None:
+            cam.close()
+            cv2.destroyAllWindows()
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--open", help="a package folder (sims/<name>) to run: live arms/object if connected")
+    ap.add_argument("--static", action="store_true", help="with --open: no arms, no camera (just look at it)")
     ap.add_argument("--load", help="a package folder (sims/<name>) to put back into this project")
     ap.add_argument("--calibration", action="store_true", help="with --load: also restore the calibration")
     args = ap.parse_args()
+    if args.open:
+        return open_package(args.open, not args.static, not args.static)
     if args.load:
         return load_package(args.load, args.calibration)
     OUT.mkdir(exist_ok=True)

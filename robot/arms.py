@@ -164,7 +164,7 @@ def connect_arms(cfg, names, model):
         arm.connect()
         arm.torque(False)
         joints = SIM_JOINTS[a["model"]]
-        mapping = SimMap(root / a["sim_mapping"], arm.calibration) if arm.calibration else None
+        mapping = SimMap(root / a["sim_mapping"], arm.calibration, a["model"]) if arm.calibration else None
         if mapping is not None and not mapping.ready:
             mapping = None
         sim, _ = load_sim(a["model"])
