@@ -1,0 +1,40 @@
+<mujoco model="video_masking_tape">
+  <!-- Ring measured from the video against the can's known diameter. Mass is an estimate. -->
+  <compiler meshdir="."/>
+  <default>
+    <default class="video_masking_tape_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+    </default>
+    <default class="video_masking_tape_collision">
+      <geom group="3" condim="4" friction="0.6 0.01 0.0001"/>
+    </default>
+  </default>
+  <asset>
+    <mesh name="video_masking_tape_visual" file="video_masking_tape_visual.obj"/>
+    <texture name="video_masking_tape_texture" type="2d" file="video_masking_tape_texture.png"/>
+    <material name="video_masking_tape_material" texture="video_masking_tape_texture"/>
+  </asset>
+  <worldbody>
+    <body name="video_masking_tape">
+      <freejoint name="video_masking_tape_joint"/>
+      <inertial pos="-1.13356e-18 -1.72732e-18 0.012" mass="0.055" fullinertia="2.15956e-05 2.15956e-05 3.79112e-05 3.4791e-22 -1.54379e-22 -1.14003e-21"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="0.0258032 0 0.012" quat="1 0 0 0"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="0.0238391 0.00987446 0.012" quat="0.980785 0 0 0.19509"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="0.0182456 0.0182456 0.012" quat="0.92388 0 0 0.382683"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="0.00987446 0.0238391 0.012" quat="0.83147 0 0 0.55557"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="1.57999e-18 0.0258032 0.012" quat="0.707107 0 0 0.707107"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="-0.00987446 0.0238391 0.012" quat="0.55557 0 0 0.83147"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="-0.0182456 0.0182456 0.012" quat="0.382683 0 0 0.92388"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="-0.0238391 0.00987446 0.012" quat="0.19509 0 0 0.980785"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="-0.0258032 3.15998e-18 0.012" quat="6.12323e-17 0 0 1"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="-0.0238391 -0.00987446 0.012" quat="-0.19509 0 0 0.980785"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="-0.0182456 -0.0182456 0.012" quat="-0.382683 0 0 0.92388"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="-0.00987446 -0.0238391 0.012" quat="-0.55557 0 0 0.83147"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="-4.73997e-18 -0.0258032 0.012" quat="-0.707107 0 0 0.707107"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="0.00987446 -0.0238391 0.012" quat="-0.83147 0 0 0.55557"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="0.0182456 -0.0182456 0.012" quat="-0.92388 0 0 0.382683"/>
+      <geom class="video_masking_tape_collision" type="box" size="0.005285 0.00618383 0.012" pos="0.0238391 -0.00987446 0.012" quat="-0.980785 0 0 0.19509"/>
+      <geom class="video_masking_tape_visual" mesh="video_masking_tape_visual" material="video_masking_tape_material"/>
+    </body>
+  </worldbody>
+</mujoco>

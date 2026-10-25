@@ -1,0 +1,34 @@
+<mujoco model="lego_tree">
+  <!-- Custom LEGO build (TreeHacks), no online model. Size measured from photo 4 using the 1x4 tile (31.8 mm, LEGO standard) as a ruler: ~69 x 18 x 75 mm. Density 477 kg/m3 = 2x4 brick 2.3 g / 31.8x15.8x9.6 mm (hollow ABS). Friction: no measured ABS value found online; 0.4 (hard plastic), randomized in training -->
+  <compiler meshdir="."/>
+  <default>
+    <default class="lego_tree_visual">
+      <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+    </default>
+    <default class="lego_tree_collision">
+      <geom type="mesh" group="3" condim="4" friction="0.4 0.005 0.0001"/>
+    </default>
+  </default>
+  <asset>
+    <mesh name="lego_tree_visual" file="lego_tree_visual.obj"/>
+    <mesh name="lego_tree_collision_0" file="lego_tree_collision_0.obj"/>
+    <mesh name="lego_tree_collision_1" file="lego_tree_collision_1.obj"/>
+    <mesh name="lego_tree_collision_2" file="lego_tree_collision_2.obj"/>
+    <mesh name="lego_tree_collision_3" file="lego_tree_collision_3.obj"/>
+    <mesh name="lego_tree_collision_4" file="lego_tree_collision_4.obj"/>
+    <texture name="lego_tree_texture" type="2d" file="lego_tree_texture.png"/>
+    <material name="lego_tree_material" texture="lego_tree_texture"/>
+  </asset>
+  <worldbody>
+    <body name="lego_tree">
+      <freejoint name="lego_tree_joint"/>
+      <inertial pos="0.000542452 -6.07645e-05 0.0302268" mass="0.0140124" fullinertia="5.09417e-06 7.5793e-06 2.78581e-06 -2.92753e-10 -1.67815e-07 6.56691e-09"/>
+      <geom class="lego_tree_visual" mesh="lego_tree_visual" material="lego_tree_material"/>
+      <geom class="lego_tree_collision" mesh="lego_tree_collision_0"/>
+      <geom class="lego_tree_collision" mesh="lego_tree_collision_1"/>
+      <geom class="lego_tree_collision" mesh="lego_tree_collision_2"/>
+      <geom class="lego_tree_collision" mesh="lego_tree_collision_3"/>
+      <geom class="lego_tree_collision" mesh="lego_tree_collision_4"/>
+    </body>
+  </worldbody>
+</mujoco>

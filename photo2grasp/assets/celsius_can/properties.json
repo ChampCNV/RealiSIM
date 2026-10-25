@@ -1,0 +1,27 @@
+{
+  "source": "Celsius Sparkling Grape Rush, 12 fl oz slim aluminium can (opened, treated as empty). Size: 12 oz slim can ~6.13 in tall x 2.25 in wide (brainbound.blog slim can guide; Ball 202 slim can 6.13 in flanged height) = 57 x 57 x 156 mm. Mass: empty 12 oz aluminium can ~13 g (typical; 0.368 kg if full, 355 ml). Friction: painted aluminium on cloth ~0.5",
+  "size_m": [
+    0.057,
+    0.057,
+    0.156
+  ],
+  "mass_kg": 0.013,
+  "material": "aluminium can (printed coating)",
+  "friction": [
+    0.5,
+    0.005,
+    0.0001
+  ],
+  "tags": {
+    "front": null,
+    "back": 2
+  },
+  "tag_height_m": 0.084,
+  "center_of_mass": [
+    0.0003,
+    0.0,
+    0.0736
+  ],
+  "collision_pieces": 6,
+  "look_from": "celsius_sparkling_grape_rush_can"
+}

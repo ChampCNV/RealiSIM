@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+.venv*/
+.env
+
+# Third-party repos (cloned in Setup, see README)
+third_party/
+
+# Personal data and working files
+inputs/
+outputs/*
+!outputs/apriltags/
+!outputs/demo/
+outputs/demo/*.mp4
+*.zip
+Screenshot*.png
+
+# Training runs: keep the AprilTag policies (tag_envcam_2250k = current best, incl. train_state.pt so new objects
+# can start from it: photo2grasp.py train)
+runs/*
+!runs/tag_colab_2m/
+runs/tag_colab_2m/train_state.pt
+runs/tag_colab_2m/actor_last.pt
+!runs/tag_envcam_2250k/
+
+# Calibration of one specific arm (made by robot/calibrate.py)
+robot/calibration/
+
+# Generated textures (rebuilt automatically)
+assets/apriltag/
+
+# People's hands (made by make_hand.py): personal measurements, kept local; the sample (from a stock photo) is shared
+hands/*
+!hands/sample_hand/
+
+# Exported sim packages (export_sims.py rebuilds them; two_arms is >100 MB, over GitHub's file limit):
+# only each package's params.json (every setting, small) is kept in git
+sims/*/*
+!sims/*/params.json
+sims/*.zip

@@ -1,0 +1,12 @@
+{
+  "checkpoint": "../runs/tag_envcam_2250k/actor_last.pt",
+  "object": "lego_tree",
+  "env_only": false,
+  "episodes": 40,
+  "outcomes": {
+    "picked up": 30,
+    "knocked over": 9,
+    "grasped, not lifted": 1
+  },
+  "success_rate": 0.75
+}
