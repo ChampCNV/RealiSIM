@@ -1,0 +1,11 @@
+{
+  "actorSpecification": 1,
+  "name": "realisim-item-evidence",
+  "title": "RealiSIM item evidence",
+  "description": "Public web evidence (dimensions, weight, material) for physical items, with exact source quotes, for simulation asset inputs.",
+  "version": "0.1",
+  "buildTag": "latest",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile",
+  "readme": "../README.md"
+}

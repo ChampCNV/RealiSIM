@@ -1,0 +1,20 @@
+
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#050506;height:100%} #root{padding:16px;box-sizing:border-box;--mana-app-height:900px}</style></head>
+<body><div id="root"></div>
+<script type="module">
+import * as THREE_ from 'https://esm.sh/three@0.160.0';
+import React_ from 'https://esm.sh/react@18.3.1';
+import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1';
+import ReactMarkdown_ from 'https://esm.sh/react-markdown@9?deps=react@18.3.1';
+import remarkGfm_ from 'https://esm.sh/remark-gfm@4';
+window.THREE = THREE_; window.React = React_; window.ReactMarkdown = ReactMarkdown_; window.remarkGfm = remarkGfm_;
+window.FS = { auth: { currentUser: { getIdToken: async () => 'harness' } } };
+window.useIngressUrl = () => ({ url: location.origin + '/b' });
+window.useManaRouter = () => ({ url: null });
+window.apiManager = { save: async () => {}, delete: async () => {}, list: async () => [] };
+window.copyText = async () => 'ok';
+const s = document.createElement('script'); s.src = '/app.js';
+s.onload = () => { createRoot(document.getElementById('root')).render(React_.createElement(window.UserDiv)); window.__mounted = true; };
+document.body.appendChild(s);
+window.addEventListener('error', (e) => { (window.__errors = window.__errors || []).push(String(e.message)); });
+</script></body></html>

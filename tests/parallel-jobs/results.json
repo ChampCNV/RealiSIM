@@ -1,0 +1,123 @@
+{
+ "three_projects_concurrent_running_set": {
+  "ok": true,
+  "detail": {
+   "r_pA": "pA",
+   "r_pB": "pB",
+   "r_pC": "pC"
+  }
+ },
+ "three_projects_concurrent_peak": {
+  "ok": true,
+  "detail": {
+   "total": 1,
+   "per_project": {
+    "pK0": 1,
+    "pK1": 1,
+    "pK2": 1
+   }
+  }
+ },
+ "same_project_serializes": {
+  "ok": true,
+  "detail": {
+   "order": [
+    "a1",
+    "b1",
+    "a2"
+   ],
+   "peak": {
+    "total": 1,
+    "per_project": {
+     "pK0": 1,
+     "pK1": 1,
+     "pK2": 1
+    }
+   }
+  }
+ },
+ "other_project_not_blocked_by_queue_head": {
+  "ok": true,
+  "detail": 0.64
+ },
+ "hold_blocks_new_starts": {
+  "ok": true,
+  "detail": [
+   "h0",
+   "h1"
+  ]
+ },
+ "held_message_once_per_run": {
+  "ok": true,
+  "detail": [
+   1,
+   1
+  ]
+ },
+ "hold_release_resumes": {
+  "ok": true,
+  "detail": null
+ },
+ "health_counts": {
+  "ok": true,
+  "detail": {
+   "running": 3,
+   "workers": 3,
+   "queue": 1,
+   "busy": true
+  }
+ },
+ "release_idle_false_while_running": {
+  "ok": true,
+  "detail": null
+ },
+ "health_idle_after": {
+  "ok": true,
+  "detail": {
+   "running": 0,
+   "queue": 0,
+   "busy": false
+  }
+ },
+ "enqueue_dedupe": {
+  "ok": true,
+  "detail": {
+   "count": 1
+  }
+ },
+ "delete_guard_running_project": {
+  "ok": true,
+  "detail": 409
+ },
+ "project_running_helper": {
+  "ok": true,
+  "detail": null
+ },
+ "heavy_starts_staggered": {
+  "ok": true,
+  "detail": 0.85
+ },
+ "light_kind_not_staggered": {
+  "ok": true,
+  "detail": 0.0
+ },
+ "worker_survives_failure": {
+  "ok": true,
+  "detail": "failed"
+ },
+ "kind_limit_respected": {
+  "ok": true,
+  "detail": 1
+ },
+ "worker_config_clamp": {
+  "ok": true,
+  "detail": {
+   "None": true,
+   "{'workers': 9}": true,
+   "{'workers': 0}": true,
+   "{'workers': 'x'}": true,
+   "{'workers': 4}": true,
+   "env": true
+  }
+ }
+}

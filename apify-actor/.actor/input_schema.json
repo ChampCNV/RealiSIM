@@ -1,0 +1,31 @@
+{
+  "title": "RealiSIM item evidence",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "items": {
+      "title": "Items",
+      "type": "array",
+      "editor": "json",
+      "description": "Text descriptions only: [{id,label,description,visible_text?,material_guess?,size_hint_cm?}]. Never images or private identifiers.",
+      "prefill": [
+        {
+          "id": "item_1",
+          "label": "Stanley IceFlow tumbler 30 oz",
+          "description": "insulated stainless steel tumbler with handle"
+        }
+      ]
+    },
+    "maxResultsPerItem": {
+      "title": "Max results per item",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 3,
+      "description": "Web pages fetched per item."
+    }
+  },
+  "required": [
+    "items"
+  ]
+}

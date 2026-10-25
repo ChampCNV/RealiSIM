@@ -1,0 +1,7 @@
+{
+ "poll_seconds": 60,
+ "mode_intent": "promote",
+ "policy": "Fetch upstream main every poll; check candidates in isolation; promote only the latest tested SHA by fast-forward when checks pass with no contract drift, or when a bounded maintainer approved that exact (SHA, adapter fingerprint, report); only while the user pipeline is idle; failed checks keep the last working release.",
+ "set_by": "chat:001792823214220c9b7c569b7574e51a9af on behalf of the user's explicit ongoing authorization",
+ "set_at": 1792880187146
+}
