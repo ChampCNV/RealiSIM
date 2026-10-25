@@ -139,7 +139,7 @@ class Scene:
 class Tracker:
     """Camera frame -> every object's pose (robot frame) from its tags, same maths as tracking one object."""
 
-    def __init__(self, scene, cfg, width, height, roll=None):
+    def __init__(self, scene, cfg, width, height, roll=None, park=True):
         """roll: how the objects' tags are glued ({name: {"front", "back"}}) to use instead of objects.json; then
         nothing is written to objects.json (a package's own settings)."""
         ec = cfg["env_camera"]
@@ -151,7 +151,7 @@ class Tracker:
         self.pts = np.array([[-s, s, 0], [s, s, 0], [s, -s, 0], [-s, -s, 0]], np.float32)  # OpenCV corner order
         self.detector = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(TAG["dictionary"]),
                                                 cv2.aruco.DetectorParameters())
-        self.persist = roll is None
+        self.persist, self.park = roll is None, park  # park: unseen objects leave the table (else stay put)
         self.roll = {n: dict(roll[n]) for n in scene.names} if roll else {n: tag_roll(n) for n in scene.names}
         self.last_seen = {n: -1e9 for n in scene.names}
         self.tag_rotations = {}  # this frame: {(name, side): tag rotation}, for "u"
@@ -184,7 +184,7 @@ class Tracker:
                 name, tilt = orientation(R_obj)
                 lines[n] = f"{n}: front {f * 100:5.1f} cm  side {sd * 100:+5.1f} cm  {name} ({tilt:.0f} deg)"
             else:
-                if now - self.last_seen[n] > UNSEEN_S:
+                if self.park and now - self.last_seen[n] > UNSEEN_S:
                     self.scene.place(n, PARK + [0.25 * i, 0, 0], np.eye(3))
                 lines[n] = f"{n}: not seen"
         return lines

@@ -252,7 +252,9 @@ def package_arms(pkg, params, model):
     return arms
 
 
-def open_package(path, use_arms=True, use_camera=True):
+def open_package(path, use_arms=True, use_camera=None):
+    """use_camera None: the object is tracked only on the package's own setup (one of its arms is plugged in),
+    never with some other camera (e.g. a laptop webcam on another PC); True: track anyway; False: never."""
     import cv2
     import mujoco.viewer
     from track import Tracker
@@ -267,6 +269,11 @@ def open_package(path, use_arms=True, use_camera=True):
     camera = (params.get("camera") or params.get("real_setup") or {})
     ec = dict(camera.get("env_camera") or {})
     cam = track = None
+    if use_camera is None:
+        use_camera = bool(arms)
+        if not arms:
+            print("not this package's own setup (none of its arms plugged in): the object stays still "
+                  "(--track follows it with the environment camera anyway)")
     if use_camera and "pos" in ec:
         try:
             from camera import Camera, camera_indices
@@ -275,7 +282,7 @@ def open_package(path, use_arms=True, use_camera=True):
             h, w = cam.read().shape[:2]
             roll = {scene.names[0]: params["object"]["objects_json"].get("tag_roll_deg") or {}}
             roll[scene.names[0]] = {k: roll[scene.names[0]].get(k) for k in ("front", "back")}
-            track = Tracker(scene, dict(env_camera=ec, tag_mm=camera.get("tag_mm")), w, h, roll=roll)
+            track = Tracker(scene, dict(env_camera=ec, tag_mm=camera.get("tag_mm")), w, h, roll=roll, park=False)
             print(f"{scene.names[0]}: following its tags in the environment camera (u = it stands upright now)")
         except (Exception, SystemExit) as e:
             print(f"environment camera not available ({e}): the object stays still")
@@ -316,11 +323,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--open", help="a package folder (sims/<name>) to run: live arms/object if connected")
     ap.add_argument("--static", action="store_true", help="with --open: no arms, no camera (just look at it)")
+    ap.add_argument("--track", action="store_true", help="with --open: follow the object with the camera anyway")
     ap.add_argument("--load", help="a package folder (sims/<name>) to put back into this project")
     ap.add_argument("--calibration", action="store_true", help="with --load: also restore the calibration")
     args = ap.parse_args()
     if args.open:
-        return open_package(args.open, not args.static, not args.static)
+        return open_package(args.open, not args.static, False if args.static else (True if args.track else None))
     if args.load:
         return load_package(args.load, args.calibration)
     OUT.mkdir(exist_ok=True)

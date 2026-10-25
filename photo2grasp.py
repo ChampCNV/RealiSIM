@@ -379,6 +379,7 @@ def main():
     sm = sub.add_parser("sim", help="saved sim packages: list them, or open one (live arms/object if connected)")
     sm.add_argument("name", nargs="?", help="sims/<name>; none = list")
     sm.add_argument("--static", action="store_true", help="no arms, no camera: just look at it")
+    sm.add_argument("--track", action="store_true", help="follow the object with the camera even off its setup")
     sm.add_argument("--export", action="store_true", help="save fresh packages first (export_sims.py)")
     lk = sub.add_parser("look", help="give an object the textured look of another asset of the same object")
     lk.add_argument("name")
@@ -462,7 +463,8 @@ def main():
                 print(f"{params.parent.name:12s} {about['about']} (exported {about['exported']})")
             print("open one: python photo2grasp.py sim <name> [--static]")
         else:
-            call("export_sims.py", "--open", ROOT / "sims" / args.name, *(["--static"] if args.static else []))
+            call("export_sims.py", "--open", ROOT / "sims" / args.name, *(["--static"] if args.static else []),
+                 *(["--track"] if args.track else []))
     elif args.step == "look":
         copy_look(args.name, args.source)
         print(f"next: python photo2grasp.py check {args.name}")
