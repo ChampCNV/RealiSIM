@@ -7,6 +7,7 @@ mixes them up. Every arm has its own calibration files; one arm is "active" at a
     python robot/arms.py add right --model so101
     python robot/arms.py use right            # make it the active arm
     python robot/arms.py remove right
+    python robot/arms.py view                 # every plugged-in arm side by side in the sim, copying the real ones
 
 robot/config.json "arms": {name: {serial, model, calibration, sim_mapping}}; the active arm's entries are also
 written to the top-level "port", "serial", "calibration", "sim_mapping" and "arm_model" the scripts read.
@@ -87,15 +88,82 @@ def show(cfg):
         print(f"  unregistered boards plugged in: {', '.join(f'{s} ({plugged[s]})' for s in other)}")
 
 
+ROBOT_XML = {"so101": ("robotstudio_so101/so101.xml", "base"), "so100": ("trs_so_arm100/so_arm100.xml", "Base")}
+
+
+def view(cfg, spacing=0.45):
+    """Every plugged-in arm in one sim, side by side, copying the real arms (torque off: move them by hand).
+    Calibrated arms are copied exactly; uncalibrated ones from their raw motor positions (motor middle = joint
+    middle, as in a standard assembly), good enough to see each joint move."""
+    import mujoco
+    import mujoco.viewer
+    import numpy as np
+
+    from arm import MAX_POS, SOArm
+    from sim_map import MENAGERIE, SIM_JOINTS, SimMap, load_sim
+
+    root = CONFIG.parent.parent
+    plugged = boards()
+    names = [n for n, a in cfg["arms"].items() if a["serial"] in plugged]
+    if not names:
+        raise SystemExit("no registered arm is plugged in (python robot/arms.py list)")
+    spec = mujoco.MjSpec()
+    spec.worldbody.add_light(pos=[0, -0.5, 1.5], dir=[0, 0.3, -1], diffuse=[0.8] * 3)
+    spec.worldbody.add_geom(type=mujoco.mjtGeom.mjGEOM_PLANE, size=[1, 1, 0.01], rgba=[0.35, 0.38, 0.42, 1])
+    for i, n in enumerate(names):
+        xml, base = ROBOT_XML[cfg["arms"][n]["model"]]
+        child = mujoco.MjSpec.from_file(str(MENAGERIE / xml))
+        for k in ("timestep", "iterations", "ls_iterations", "impratio", "integrator", "cone"):
+            setattr(spec.option, k, getattr(child.option, k))  # same settings: no attach warnings
+        x = (i - (len(names) - 1) / 2) * spacing
+        spec.worldbody.add_frame(pos=[x, 0, 0]).attach_body(child.body(base), f"{n}_", "")
+    model = spec.compile()
+    data = mujoco.MjData(model)
+    arms = []
+    for n in names:
+        a = cfg["arms"][n]
+        arm = SOArm(plugged[a["serial"]], root / a["calibration"], cfg["baudrate"], serial=a["serial"])
+        arm.connect()
+        arm.torque(False)
+        joints = SIM_JOINTS[a["model"]]
+        qadr = [model.jnt_qposadr[model.joint(f"{n}_{joints[m]}").id] for m in joints]
+        mapping = SimMap(root / a["sim_mapping"], arm.calibration) if arm.calibration else None
+        if mapping is not None and not mapping.ready:
+            mapping = None
+        sim, _ = load_sim(a["model"])
+        middle = (sim.jnt_range[:6, 0] + sim.jnt_range[:6, 1]) / 2
+        arms.append((n, arm, joints, qadr, mapping, middle))
+        print(f"{n}: {'calibrated: copied exactly' if mapping else 'NOT calibrated: raw motor positions'}")
+    print("both arms are limp now (torque off): move them by hand, watch the sim. Close the sim window to stop.")
+    try:
+        with mujoco.viewer.launch_passive(model, data) as viewer:
+            while viewer.is_running():
+                for n, arm, joints, qadr, mapping, middle in arms:
+                    if mapping is not None:
+                        q = mapping.to_sim(arm.read_degrees())
+                    else:
+                        raw = arm.read_raw()
+                        q = middle + np.radians([(raw[m] - MAX_POS / 2) * 360 / (MAX_POS + 1) for m in joints])
+                    data.qpos[qadr] = q
+                mujoco.mj_kinematics(model, data)
+                viewer.sync()
+                time.sleep(0.03)
+    finally:
+        for _, arm, *_ in arms:
+            arm.disconnect(torque_off=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("action", choices=["list", "add", "use", "remove"])
+    ap.add_argument("action", choices=["list", "add", "use", "remove", "view"])
     ap.add_argument("name", nargs="?")
     ap.add_argument("--model", choices=MODELS, default="so101")
     args = ap.parse_args()
     cfg = load()
     if args.action == "list":
         return show(cfg)
+    if args.action == "view":
+        return view(cfg)
     if not args.name:
         raise SystemExit(f"{args.action} needs an arm name")
     if args.action == "add":

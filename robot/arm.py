@@ -73,8 +73,9 @@ def enter_pressed():
 
 
 class SOArm:
-    def __init__(self, port, calibration_path, baudrate=1_000_000):
-        self.port, self.baudrate = port, baudrate
+    def __init__(self, port, calibration_path, baudrate=1_000_000, serial=None):
+        """serial: the board's USB serial number (robot/arms.py); default: the active arm's from config.json."""
+        self.port, self.baudrate, self.serial = port, baudrate, serial
         self.calibration_path = Path(calibration_path)
         self.calibration = json.loads(self.calibration_path.read_text()) if self.calibration_path.exists() else None
 
@@ -82,7 +83,7 @@ class SOArm:
     def connect(self):
         from serial.tools import list_ports
         ports = {p.device: p.serial_number for p in list_ports.comports()}
-        serial = json.loads(CONFIG.read_text()).get("serial") if CONFIG.exists() else None  # the active arm's board
+        serial = self.serial or (json.loads(CONFIG.read_text()).get("serial") if CONFIG.exists() else None)
         if serial and ports.get(self.port) != serial:  # Windows renumbers boards after re-plugging: find it by serial
             match = [dev for dev, s in ports.items() if s == serial]
             if not match:
