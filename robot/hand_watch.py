@@ -31,8 +31,10 @@ def env_camera_pose(cfg, width, height):
 
 class HandWatcher:
     def __init__(self, hand_model, cam_pos, cam_R, K, depth_scale=1.0):
+        """hand_model: the person's hand (its size and side), or None: MediaPipe's average hand, the biggest seen."""
         self.detector = HandDetector(num_hands=2, video=True)
-        self.template, self.side = np.array(hand_model["points"]), hand_model["side"]
+        self.template = np.array(hand_model["points"]) if hand_model else None
+        self.side = hand_model["side"] if hand_model else None
         self.pos, self.R, self.K, self.depth_scale = np.asarray(cam_pos), np.asarray(cam_R), K, depth_scale
 
     def __call__(self, rgb, depth=None):

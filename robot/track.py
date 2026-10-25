@@ -2,13 +2,16 @@
 
     python robot/track.py lego_tree celsius_can                 # these objects
     python robot/track.py --all                                  # every object whose tag IDs are set
-    python robot/track.py lego_tree celsius_can --hand my_hand   # + the hand (MediaPipe)
+    python robot/track.py lego_tree celsius_can --hand           # + your hand as a stick pose (MediaPipe)
+    python robot/track.py lego_tree celsius_can --hand my_hand   # + the hand made with photo2grasp.py hand
     python robot/track.py celsius_can --video clip.mp4           # a recording instead of the camera
 
 The environment camera (calibrated with photo2grasp.py calibrate) finds every tag in each frame; each tag ID
 belongs to one object (objects.json "tags"), so every object is placed where its tags are seen: position and
 which way it is turned (upright, tilted, lying, upside down), never below the table. An object not seen for
 UNSEEN_S seconds is taken off the table in the sim. The arm (optional, torque off) is copied too.
+--hand alone shows the hand as sticks between MediaPipe's 21 points (no hand model needed); hidden flesh around
+them (sim2real/hand_sim.py StickHand) keeps an object resting on the hand from sinking into it.
 Orientation needs to know how each tag is glued: the first time a tag is seen the object is assumed to stand
 upright (glue roll rounded to 90 deg); "u" in the camera window measures it exactly for every object in view
 (stand them upright first). q quits. Tracking only: training and the robot runner use one object.
@@ -26,7 +29,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "sim2real"))
-from hand_sim import SimHand, add_hand, load_hand  # noqa: E402
+from hand_sim import SimHand, StickHand, add_hand, add_stick_hand, load_hand  # noqa: E402
 from lift_env import ARM_JOINTS, ARM_SCENE, front_face_y  # noqa: E402
 from tag_env import (TAG, intrinsics, measured_roll, object_rotation, object_setup, object_tags,  # noqa: E402
                      orientation, ruler, save_tag_roll, tag_png, tag_roll)
@@ -88,7 +91,9 @@ class Scene:
                 obj.body(n).add_geom(name=tex, type=mujoco.mjtGeom.mjGEOM_BOX, size=[half, 0.0003, half],
                                      pos=[0, y, height], material=tex, contype=0, conaffinity=0, group=2, density=0)
             scene.worldbody.add_frame(pos=PARK + [0.25 * i, 0, 0]).attach_body(obj.body(n), "", "")
-        if hand:
+        if hand == "stick":
+            add_stick_hand(scene)
+        elif hand:
             add_hand(scene, hand)
         if env_camera and "pos" in env_camera:  # where the calibrated camera stands (drawn in the viewer)
             q = np.zeros(4)
@@ -103,9 +108,11 @@ class Scene:
         self.obj_qadr = {n: m.jnt_qposadr[m.body(n).jntadr[0]] for n in names}
         self.geoms = {n: [g for g in range(m.ngeom) if m.geom_bodyid[g] == m.body(n).id and m.geom_contype[g]]
                       for n in names}
-        self.hand = SimHand(m, hand) if hand else None
-        if self.hand:
-            self.hand.park(self.data)
+        self.hand = SimHand(m, hand) if isinstance(hand, dict) else None  # a person's hand model
+        self.stick = StickHand(m) if hand == "stick" else None  # or the tracked points as they are
+        for h in (self.hand, self.stick):
+            if h is not None:
+                h.park(self.data)
         for i, n in enumerate(names):
             self.place(n, PARK + [0.25 * i, 0, 0], np.eye(3))
 
@@ -187,7 +194,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("objects", nargs="*", help="object names (assets/<name>)")
     ap.add_argument("--all", action="store_true", help="every object whose tag IDs are set (clashing ones left out)")
-    ap.add_argument("--hand", help="also track this person's hand (hands/<name>)")
+    ap.add_argument("--hand", nargs="?", const="stick",
+                    help="also track the hand: alone = stick pose from MediaPipe; or a hand made with photo2grasp")
     ap.add_argument("--depth", action="store_true", help="RealSense depth for the hand's distance")
     ap.add_argument("--video", help="a recorded video instead of the environment camera")
     ap.add_argument("--camera", type=int, help="this camera index instead of the environment camera")
@@ -200,7 +208,7 @@ def main():
                        if v.get("tags") and (ROOT / "assets" / n / f"{n}.xml").exists())
     if not names:
         raise SystemExit("give object names, or --all")
-    hand = load_hand(args.hand) if args.hand else None
+    hand = "stick" if args.hand == "stick" else load_hand(args.hand) if args.hand else None
     scene = Scene(names, hand, skip_clashes=args.all, env_camera=cfg["env_camera"])
     print("tracking:", ", ".join(f"{n} (tags {scene.tags[n][0]}/{scene.tags[n][1]})" for n in names))
 
@@ -225,24 +233,42 @@ def main():
                      ec.get("fixed_exposure"))
     h, w = cam.read().shape[:2]
     track = Tracker(scene, cfg, w, h)
-    watch = HandWatcher(hand, ec["pos"], ec["R"], track.K, getattr(cam, "depth_scale", 1.0)) if hand else None
+    watch = HandWatcher(hand if isinstance(hand, dict) else None, ec["pos"], ec["R"], track.K,
+                        getattr(cam, "depth_scale", 1.0)) if hand else None
+    smooth, hand_seen = None, -1e9  # stick hand: points averaged over frames (MediaPipe jitters a little)
     viewer = mujoco.viewer.launch_passive(scene.model, scene.data)
     viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CAMERA] = 1  # draw the environment camera
     try:
         while viewer.is_running():
             rgb = cam.read()
             frame = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-            lines = list(track(frame, time.time()).values())
-            if watch is not None:
+            now = time.time()
+            hand_line = None
+            if watch is not None:  # the hand first: objects resting on it are placed after
                 seen = watch(rgb, cam.depth() if hasattr(cam, "depth") else None)
-                lines.append("hand: not seen")
+                hand_line = "hand: not seen"
                 if seen is not None:
                     watch.draw(frame, seen)
-                    points = scene.hand.fit(seen["points"])
-                    scene.hand.set(scene.data, points)
-                    f, sd, ht = ruler(scene.hand.palm_top(points)[0])
-                    lines[-1] = (f"hand: palm front {f * 100:5.1f} cm  side {sd * 100:+5.1f} cm  "
+                    if scene.stick is not None:
+                        smooth = seen["points"] if smooth is None else 0.5 * seen["points"] + 0.5 * smooth
+                        scene.stick.set(scene.data, smooth)
+                        palm = smooth[[0, 5, 9, 13, 17]].mean(0)
+                    else:
+                        points = scene.hand.fit(seen["points"])
+                        scene.hand.set(scene.data, points)
+                        palm = scene.hand.palm_top(points)[0]
+                    hand_seen = now
+                    f, sd, ht = ruler(palm)
+                    hand_line = (f"hand: palm front {f * 100:5.1f} cm  side {sd * 100:+5.1f} cm  "
                                  f"height {ht * 100:4.1f} cm")
+                elif now - hand_seen > UNSEEN_S:
+                    smooth = None
+                    (scene.stick or scene.hand).park(scene.data)
+            lines = list(track(frame, now).values()) + ([hand_line] if hand_line else [])
+            if scene.stick is not None and smooth is not None:  # an object resting on the hand: not into it
+                for n in scene.names:
+                    if scene.data.qpos[scene.obj_qadr[n]] < 1.0:  # on the table, not parked
+                        scene.stick.lift_out(scene.data, scene.obj_qadr[n], scene.geoms[n])
             if arm is not None:
                 scene.data.qpos[scene.qadr] = mapping.to_sim(arm.read_degrees())
             mujoco.mj_forward(scene.model, scene.data)

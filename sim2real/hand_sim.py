@@ -195,6 +195,91 @@ class SimHand:
         return origin + R @ self.box_centre + R[:, 2] * self.box_half[2], R[:, 2]
 
 
+# ── Stick hand: the tracked 21 points as they are (no person-specific model) ────────────────────────────
+STICK_LINKS = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11),
+               (11, 12), (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (0, 17), (17, 18), (18, 19), (19, 20)]
+STICK_RADIUS = 0.003  # m: the sticks the viewer draws
+FLESH_RADIUS = 0.009  # m: finger flesh around the tracked bone line (hidden, keeps objects from sinking)
+FLESH_GROUP = 4  # hidden in the viewer unless geom group 4 is switched on
+
+
+def add_stick_hand(spec, prefix="stick"):
+    """The hand as sticks between its 21 tracked points, plus hidden flesh (finger capsules and a palm plate)
+    so an object resting on the hand does not sink into it. Mocap bodies, resized every frame by StickHand."""
+    stick = dict(type=mujoco.mjtGeom.mjGEOM_CAPSULE, contype=0, conaffinity=0, density=0)
+    for i, _ in enumerate(STICK_LINKS):
+        body = spec.worldbody.add_body(name=f"{prefix}_{i}", mocap=True)
+        body.add_geom(name=f"{prefix}_{i}", size=[STICK_RADIUS, 0.01, 0], group=2, rgba=[1.0, 0.75, 0.2, 1], **stick)
+        body.add_geom(name=f"{prefix}_flesh_{i}", size=[FLESH_RADIUS, 0.01, 0], group=FLESH_GROUP,
+                      rgba=[0.87, 0.68, 0.56, 0.4], **stick)
+    spec.worldbody.add_body(name=f"{prefix}_palm", mocap=True).add_geom(
+        name=f"{prefix}_palm", type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.04, 0.04, PALM_HALF_THICKNESS], contype=0,
+        conaffinity=0, group=FLESH_GROUP, rgba=[0.87, 0.68, 0.56, 0.4], density=0)
+
+
+class StickHand:
+    """Moves the stick hand of a compiled model to tracked points and keeps objects from sinking into it."""
+
+    def __init__(self, model, prefix="stick"):
+        self.model, self.prefix = model, prefix
+        self.links = [(model.body_mocapid[model.body(f"{prefix}_{i}").id], model.geom(f"{prefix}_{i}").id,
+                       model.geom(f"{prefix}_flesh_{i}").id) for i in range(len(STICK_LINKS))]
+        self.palm = model.body_mocapid[model.body(f"{prefix}_palm").id]
+        self.palm_geom = model.geom(f"{prefix}_palm").id
+        self.flesh = [f for _, _, f in self.links] + [self.palm_geom]
+        self.points = None
+
+    def set(self, data, points):
+        m, p = self.model, np.asarray(points, float)
+        self.points = p
+        for (a, b), (mocap, stick, flesh) in zip(STICK_LINKS, self.links):
+            half = max(np.linalg.norm(p[b] - p[a]) / 2, 1e-4)
+            data.mocap_pos[mocap] = (p[a] + p[b]) / 2
+            data.mocap_quat[mocap] = _quat_z_to(p[b] - p[a]) if half > 1e-4 else [1, 0, 0, 0]
+            for g in (stick, flesh):
+                m.geom_size[g, 1] = half
+                m.geom_rbound[g] = m.geom_size[g, 0] + half
+        # palm plate through the wrist and the knuckles (which side is the palm does not matter: it is flat)
+        y = p[9] - p[0]
+        y /= np.linalg.norm(y)
+        x = p[5] - p[17]
+        x -= (x @ y) * y
+        x /= np.linalg.norm(x)
+        R = np.stack([x, y, np.cross(x, y)], 1)
+        local = (p[[0, 5, 9, 13, 17]] - p[[0, 5, 9, 13, 17]].mean(0)) @ R
+        half = np.array([np.ptp(local[:, 0]) / 2 + FLESH_RADIUS, np.ptp(local[:, 1]) / 2, PALM_HALF_THICKNESS])
+        data.mocap_pos[self.palm] = p[[0, 5, 9, 13, 17]].mean(0) + R @ np.array([local[:, 0].min() + half[0] -
+                                                                                   FLESH_RADIUS, 0, 0])
+        data.mocap_quat[self.palm] = _quat_of(R)
+        m.geom_size[self.palm_geom] = half
+        m.geom_rbound[self.palm_geom] = np.linalg.norm(half)
+
+    def park(self, data):
+        far = np.array([2.0, -2.0, 0.1])
+        self.set(data, far + np.array([[0.01 * (i % 5), 0.02 * (i // 5), 0] for i in range(21)]))
+
+    def lift_out(self, data, obj_qadr, obj_geoms, iters=4):
+        """If the object sinks into the hand from above (resting on it), lift it until it rests on the flesh.
+        Side contacts (fingers around it) are left alone. Returns how far it was lifted (m)."""
+        m = self.model
+        fromto = np.zeros(6)
+        lifted = 0.0
+        for _ in range(iters):
+            mujoco.mj_kinematics(m, data)
+            deepest = 0.0
+            bottom_z = data.qpos[obj_qadr + 2]  # asset origin = bottom centre
+            for og in obj_geoms:
+                for hg in self.flesh:
+                    dist = mujoco.mj_geomDistance(m, data, og, hg, 0.05, fromto)
+                    if dist < deepest and min(fromto[2], fromto[5]) < bottom_z + 0.03:  # touching its underside
+                        deepest = dist
+            if deepest >= -1e-4:
+                break
+            data.qpos[obj_qadr + 2] -= deepest - 2e-4
+            lifted -= deepest
+        return lifted
+
+
 def _rot(axis, angle):
     c, s = np.cos(angle), np.sin(angle)
     R = np.eye(3)

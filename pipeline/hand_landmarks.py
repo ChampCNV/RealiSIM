@@ -75,9 +75,10 @@ def palm_size(p):
 
 def camera_points(hand, template, K, depth=None, depth_scale=1.0):
     """21 points of a detected hand in the camera frame (OpenCV: x right, y down, z forward), in metres.
-    template: the person's hand points (hands/<name>/hand.json) for the real size. depth: optional depth image
-    aligned with the colour image (in units of depth_scale metres) to correct the distance."""
-    obj = hand["world"] * (palm_size(np.asarray(template)) / palm_size(hand["world"]))
+    template: the person's hand points (hands/<name>/hand.json) for the real size, or None for MediaPipe's own
+    estimate (an average hand). depth: optional depth image aligned with the colour image (in units of
+    depth_scale metres) to correct the distance."""
+    obj = hand["world"] * (palm_size(np.asarray(template)) / palm_size(hand["world"]) if template is not None else 1)
     ok, rvec, tvec = cv2.solvePnP(obj.astype(np.float64), hand["px"].astype(np.float64), K, None,
                                   flags=cv2.SOLVEPNP_SQPNP)
     if not ok:
