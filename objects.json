@@ -81,6 +81,10 @@
     "tag_roll_deg": {
       "back": -90.0,
       "front": -180.0
+    },
+    "tags": {
+      "front": 0,
+      "back": 1
     }
   },
   "so101_motor_holder": {
