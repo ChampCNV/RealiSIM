@@ -91,14 +91,14 @@ def show(cfg):
         print(f"  unregistered boards plugged in: {', '.join(f'{s} ({plugged[s]})' for s in other)}")
 
 
-def arm_poses(cfg):
+def arm_poses(cfg, names=None):
     """Where every arm stands, in one arm's robot frame (the reference: the active arm if it has a camera
     calibration). Each arm's camera calibration says where the (same) camera is seen from that arm; combined they
     give one arm's base in the other's frame. Both stand on the same table, so only the sideways/forward shift and
     the turn are kept (level, on the table). Returns (reference name, {name: (shift xyz m, turn rad)}, report)."""
     import numpy as np
     cams = {n: (np.array(a["env_camera"]["pos"]), np.array(a["env_camera"]["R"]))
-            for n, a in cfg["arms"].items() if a.get("env_camera")}
+            for n, a in cfg["arms"].items() if a.get("env_camera") and (names is None or n in names)}
     if not cams:
         return None, {}, []
     ref = cfg.get("active_arm") if cfg.get("active_arm") in cams else next(iter(cams))
@@ -118,7 +118,16 @@ def arm_poses(cfg):
 
 
 def plugged_arms(cfg):
-    names = [n for n, a in cfg["arms"].items() if a["serial"] in boards()]
+    """The registered arms whose boards are plugged in; arms sharing a board (one board moved between arms)
+    count once: the active one, else the first registered."""
+    plugged, names, used = boards(), [], set()
+    order = sorted(cfg["arms"], key=lambda n: n != cfg.get("active_arm"))
+    for n in order:
+        s = cfg["arms"][n]["serial"]
+        if s in plugged and s not in used:
+            names.append(n)
+            used.add(s)
+    names = [n for n in cfg["arms"] if n in names]
     if not names:
         raise SystemExit("no registered arm is plugged in (python robot/arms.py list)")
     return names
@@ -133,7 +142,7 @@ def arms_scene_spec(cfg, names, spacing=0.45):
     from sim_map import MENAGERIE, ROBOT_XML, arm_placement
     scene = (MENAGERIE / "trs_so_arm100" / "scene.xml").read_text()
     spec = mujoco.MjSpec.from_string(scene.replace('<include file="so_arm100.xml"/>', ""))
-    ref, poses, report = arm_poses(cfg)
+    ref, poses, report = arm_poses(cfg, names)  # measured relative to one of THESE arms
     for line in report:
         print("measured:", line)
     for i, n in enumerate(names):

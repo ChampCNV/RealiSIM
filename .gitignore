@@ -38,3 +38,4 @@ hands/*
 # only each package's params.json (every setting, small) is kept in git
 sims/*/*
 !sims/*/params.json
+sims/*.zip

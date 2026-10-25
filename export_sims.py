@@ -127,6 +127,38 @@ def add_tags(obj, name):
                                 contype=0, conaffinity=0, group=2, density=0)
 
 
+def export_mjcf(spec, out, search):
+    """The scene as MJCF (editable XML, any MuJoCo version): out/scene.xml + every mesh and texture it uses copied
+    into out/assets/, so the folder works on any computer. search: folders where relative file names are found."""
+    import re
+    files = out / "assets"
+    files.mkdir(parents=True, exist_ok=True)
+    xml = spec.to_xml()
+
+    def local(match):
+        name = match.group(1)
+        src = Path(name) if Path(name).is_absolute() else next(
+            (d / name for d in search if (d / name).exists()), None)
+        if src is None:
+            raise FileNotFoundError(f"{name} (searched {', '.join(map(str, search))})")
+        if not (files / src.name).exists():
+            shutil.copy2(src, files / src.name)
+        return f'file="assets/{src.name}"'
+
+    xml = re.sub(r'file="([^"]+)"', local, xml)
+    xml = re.sub(r'\s(meshdir|texturedir|assetdir)="[^"]*"', "", xml)  # every path is relative to scene.xml now
+    lines, depth, k = xml.splitlines(), 0, 0
+    for i, line in enumerate(lines):  # an attached model's defaults come out as a nameless nested <default>
+        if line.strip() == "<default>" and depth > 0:
+            k += 1
+            lines[i] = line.replace("<default>", f'<default class="attached_{k}">')
+        depth += line.count("<default") - line.count("</default>") - line.count("/>") * ("<default" in line)
+    xml = "\n".join(lines) + "\n"
+    (out / "scene.xml").write_text(xml, encoding="utf-8")
+    mujoco.MjModel.from_xml_path(str(out / "scene.xml"))  # check it loads from this folder alone
+    return out / "scene.xml"
+
+
 def two_arm_package(object_name="lego_tree"):
     """The registered arms at their measured spots, the object, the calibrated camera (robot/arms.py)."""
     from arms import arm_poses, arms_scene_spec, load
@@ -134,7 +166,8 @@ def two_arm_package(object_name="lego_tree"):
     if not cfg.get("arms"):
         print("no arms registered (robot/arms.py add): two_arms skipped")
         return None
-    spec, ref, ec = arms_scene_spec(cfg, list(cfg["arms"]))
+    names = [n for n, a in cfg["arms"].items() if a["model"] != "so100"]  # the two-arm setup (the SO-100 is the
+    spec, ref, ec = arms_scene_spec(cfg, names)                            # single-arm pick setup)
     a = DEFAULT_AREA
     obj = mujoco.MjSpec.from_file(str(ROOT / "assets" / object_name / f"{object_name}.xml"))
     add_tags(obj, object_name)
@@ -145,10 +178,14 @@ def two_arm_package(object_name="lego_tree"):
         mujoco.mju_mat2Quat(q, (np.array(ec["R"]) @ np.diag([1, -1, -1])).ravel())  # OpenCV -> MuJoCo axes
         spec.worldbody.add_camera(name="envcam", pos=ec["pos"], quat=q, fovy=ec["fovy_used"])
     model = spec.compile()
-    _, poses, report = arm_poses(cfg)
+    from sim_map import MENAGERIE
+    mjcf = (spec, [MENAGERIE / "robotstudio_so101" / "assets", MENAGERIE / "trs_so_arm100" / "assets",
+                   ROOT / "assets" / object_name, ROOT / "assets" / "apriltag"])
+    _, poses, report = arm_poses(cfg, names)
     arms = {}
     copies = {f"assets/{object_name}": ROOT / "assets" / object_name}
-    for n, arm in cfg["arms"].items():
+    for n in names:
+        arm = cfg["arms"][n]
         shift, turn = poses.get(n, (np.zeros(3), 0.0))
         arms[n] = dict(model=arm["model"], serial=arm["serial"], measured=n in poses,
                        stands_at_m=shift, turned_deg=float(np.degrees(turn)), env_camera=arm.get("env_camera"),
@@ -156,15 +193,19 @@ def two_arm_package(object_name="lego_tree"):
                        sim_mapping=f"calibration/{Path(arm['sim_mapping']).name}")
         for key in ("calibration", "sim_mapping"):
             copies[arms[n][key]] = ROOT / arm[key]
-    names = ", ".join(f"{n} ({a['model']})" for n, a in cfg["arms"].items())
+    listed = ", ".join(f"{n} ({cfg['arms'][n]['model']})" for n in names)
     params = dict(
-        about=f"{names} at their measured spots, {object_name}, the calibrated camera",
+        about=f"{listed} at their measured spots, {object_name}, the calibrated camera",
         kind="two_arms", reference_arm=ref, arms=arms, placement_report=report,
         object=object_params(object_name),
         camera=dict(env_camera=dict(cfg["env_camera"], **(ec or {})), wrist_camera=cfg.get("wrist_camera"),
                     tag_mm=cfg.get("tag_mm")),
-        files=dict(scene="scene.mjb", asset=f"assets/{object_name}", calibration="calibration/"))
-    return write_package("two_arms", model, mujoco.MjData(model).qpos.copy(), params, copies)
+        files=dict(scene="scene.mjb", mjcf="mjcf/scene.xml", asset=f"assets/{object_name}",
+                   calibration="calibration/"))
+    out = write_package("two_arms", model, mujoco.MjData(model).qpos.copy(), params, copies)
+    export_mjcf(*mjcf[:1], out / "mjcf", mjcf[1])
+    print(f"   + sims/two_arms/mjcf/scene.xml (editable MJCF with its meshes)")
+    return out
 
 
 def load_package(path, with_calibration=False):
