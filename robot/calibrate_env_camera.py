@@ -138,6 +138,28 @@ class ArmScene:
         mujoco.mj_forward(m, self.data)
 
 
+def fingertip_end(model, data, tip_geoms):
+    """The very end of the closed fingers (what touches the tag): the tip geoms' centre pushed out along the
+    finger to where the fixed jaw's geometry ends (pads sit ~1 cm back from the end on the SO-100)."""
+    p = data.geom_xpos[tip_geoms].mean(0)
+    jaw = model.geom_bodyid[tip_geoms[0]]
+    axis = p - data.xpos[jaw]
+    axis /= np.linalg.norm(axis)
+    signs = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)])
+    reach = 0.0
+    for g in range(model.ngeom):
+        if model.geom_bodyid[g] != jaw:
+            continue
+        if model.geom_type[g] == mujoco.mjtGeom.mjGEOM_MESH:  # the mesh's own points (its box would stick out)
+            mesh = model.geom_dataid[g]
+            local = model.mesh_vert[model.mesh_vertadr[mesh]:model.mesh_vertadr[mesh] + model.mesh_vertnum[mesh]].T
+        else:
+            local = model.geom_aabb[g, :3, None] + signs.T * model.geom_aabb[g, 3:, None]
+        points = data.geom_xpos[g][:, None] + data.geom_xmat[g].reshape(3, 3) @ local
+        reach = max(reach, float(((points.T - p) @ axis).max()))
+    return p + axis * reach
+
+
 def calibration_scene(object_name):
     """The scene for touch calibration and its sim window: the SO-100 training scene, or the same for another arm."""
     if arm_model() == "so100":
@@ -237,7 +259,7 @@ def touch_calibrate(cam, arm, mapping, cfg, object_name="lego_tree", spots=4, fr
         """Where the closed gripper's tip is (robot frame), from the real arm's joint angles."""
         sim.data.qpos[sim.qadr] = mapping.to_sim(arm.read_degrees())
         mujoco.mj_kinematics(sim.model, sim.data)
-        return sim.data.geom_xpos[tips].mean(0)
+        return fingertip_end(sim.model, sim.data, tips)
 
     own_view = view is None
     view = view or SimView(sim, arm, mapping)
